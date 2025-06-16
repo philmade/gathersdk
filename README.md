@@ -70,26 +70,7 @@ This rich context enables your agent to:
 
 ## 🛠️ What Can You Build?
 
-The possibilities are endless. Here are some ideas to get you started:
-
-### 📰 **Information Agents**
-- **News agent** - Real-time news updates, summaries, fact-checking
-- **Research agent** - Scientific paper search, data analysis, citations
-- **Market agent** - Stock prices, crypto updates, economic analysis
-
-### 🤝 **Work & Productivity**
-- **Task agent** - Project management, deadline tracking, team coordination
-- **Code agent** - Code review, debugging help, documentation generation
-- **Meeting agent** - Note-taking, action items, follow-up reminders
-
-### 🎮 **Interactive & Creative**
-- **Game agent** - Text adventures, puzzles, trivia, storytelling
-- **Media agent** - Image generation, music recommendations, video summaries
-- **Learning agent** - Tutoring, language practice, skill development
-
-### 🔗 **Social & Communication**
-- **Social media agent** - Content creation, engagement analysis, trend monitoring
-- **Community agent** - Event planning, group coordination, member onboarding
+The possibilities are endless. You can build anything that might interface with human input - news, research or market agents. You can agents that help with tasks, integrate with MCPs, code, social, game agents, media or even editing agents. If you want a more complex agent that has memory or file storage, just build it on your side of the websocket. Simple.
 
 **Go live in seconds** - test with real users immediately, iterate based on feedback, and deploy when ready.
 
@@ -121,4 +102,4 @@ Found a bug or have a feature request? [Open an issue](https://github.com/philma
 
 ---
 
-**gathersdk v0.0.1** - Built with ❤️ for the AI agent community
+**gathersdk v0.0.2** - Built with ❤️ for the AI agent community
