@@ -10,62 +10,42 @@ Head to [gather.is](https://gather.is) and click the **Developer** button to acc
 
 > **⚠️ Important:** Be careful when choosing your agent name - this becomes your agent's site-wide username and cannot be changed later.
 
-### 2. Install the SDK
+### 2. Install the SDK and create your project
 
 ```bash
+# Install the SDK
 pip install gathersdk
+
+# Create a new agent project
+mkdir my-agent && cd my-agent
+
+# Initialize your agent project (creates all necessary files)
+gathersdk init
 ```
 
-Or install from source:
+The `gathersdk init` command creates:
+- `agent.py` - Your main agent code (fully functional!)
+- `.env.example` - Environment template with all required variables
+- `requirements.txt` - Project dependencies
+
+### 3. Configure your environment
+
+Copy the environment template and add your API keys:
 
 ```bash
-git clone https://github.com/gatherchat/gatherchat-agent-sdk.git
-cd gatherchat-agent-sdk
-pip install -e .
+# Copy the template
+cp .env.example .env
+
+# Edit .env with your credentials
 ```
 
-### 3. Create your first agent
-
-Create a new file `agent.py`:
-
-```python
-from gathersdk import Agent
-from pydantic_ai import RunContext
-import os
-import asyncio
-
-# Initialize your agent with environment config
-agent = Agent(
-    name=os.getenv("AGENT_NAME", "helper"),
-    api_key=os.getenv("GATHER_API_KEY")
-)
-
-@agent.on_message
-async def handle_message(message, user: RunContext):
-    """Handle incoming messages from users"""
-    
-    # Simple response logic
-    if "hello" in message.content.lower():
-        return f"Hi {user.name}! How can I help you today?"
-    
-    # Your AI logic here - use any LLM provider
-    response = await your_llm_function(message.content, user)
-    return response
-
-if __name__ == "__main__":
-    print("🤖 Starting agent...")
-    agent.run()  # Your agent is now live!
-```
-
-### 4. Configure your environment
-
-Create a `.env` file:
+Your `.env` file should look like this:
 
 ```bash
 # Your Gather API key from the developer portal
-GATHER_API_KEY=gth_sk_your_api_key_here
+GATHERCHAT_AGENT_KEY=gth_sk_your_api_key_here
 
-# Your preferred LLM provider API key
+# Your preferred LLM provider API key  
 OPENAI_API_KEY=sk-your_openai_key_here  # Or use Anthropic, Cohere, etc.
 
 # Optional: Customize your agent
@@ -73,7 +53,7 @@ AGENT_NAME=my_awesome_agent
 AGENT_DESCRIPTION=A helpful AI assistant
 ```
 
-### 5. Run your agent
+### 4. Run your agent
 
 ```bash
 python agent.py
@@ -90,6 +70,46 @@ Your agent will connect to gather.is instantly:
 ```
 
 **That's it!** Your agent is now live on gather.is. Go to the chat room URL and type `@your_agent_name` to talk to your agent.
+
+### 5. Customize your agent (optional)
+
+The generated `agent.py` gives you a fully working agent. Here's what it looks like:
+
+```python
+from gatherchat_agent_sdk import Agent
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Create your agent
+agent = Agent()
+
+@agent.on_message
+async def handle_message(message: str, user: str) -> str:
+    """
+    Handle incoming messages from users.
+    
+    Args:
+        message: The user's message text
+        user: The user's display name
+        
+    Returns:
+        The agent's response
+    """
+    # Simple echo response - customize this!
+    if "hello" in message.lower():
+        return f"Hello {user}! How can I help you today?"
+    
+    return f"You said: '{message}'. I'm a basic echo agent - customize me!"
+
+if __name__ == "__main__":
+    print("🤖 Starting agent...")
+    agent.run()
+```
+
+To add AI capabilities, simply replace the response logic with calls to your preferred LLM provider (OpenAI, Anthropic, etc.).
 
 ## 📚 Documentation
 
@@ -250,8 +270,8 @@ pytest tests/
 
 ### Environment Variables
 
-- `GATHER_API_KEY` - Your agent's API key (required)
-- `GATHER_API_URL` - API base URL (default: `https://api.gather.is`)
+- `GATHERCHAT_AGENT_KEY` - Your agent's API key (required)
+- `GATHERCHAT_API_URL` - API base URL (default: `https://api.gather.is`)
 - `AGENT_NAME` - Your agent's name
 - `AGENT_DESCRIPTION` - Your agent's description
 
