@@ -17,7 +17,7 @@ from .client import AgentClient, run_agent
 from .auth import SimpleAuth
 from .simple_agent import Agent
 
-__version__ = "1.1.0"
+__version__ = "0.0.1"
 
 __all__ = [
     # Simple interface (pydantic-ai style)

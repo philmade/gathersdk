@@ -69,47 +69,64 @@ Your agent will connect to gather.is instantly:
 ● Waiting for messages...
 ```
 
-**That's it!** Your agent is now live on gather.is. Go to the chat room URL and type `@your_agent_name` to talk to your agent.
+**That's it!** Your agent is now live on gather.is. Go to the chat room URL and type `@your_agent_name` to talk to your agent. This works because your client is connected to gather.is over a websocket. This is perfect for developing your agent. If you now head to gather.is and sign in, you'll see a chat has been made for you and your agent, you can invite up to five people into that chat.
+
+In the example, we use pydantic-ai to build the agent. We recommend you use this too, but gather is actually agnostic on which framework to use.
 
 ### 5. Customize your agent (optional)
 
-The generated `agent.py` gives you a fully working agent. Here's what it looks like:
+The generated `agent.py` gives you a fully working **pydantic-ai powered agent**. Here's what it looks like:
 
 ```python
 from gatherchat_agent_sdk import Agent
-import os
+from gatherchat_agent_sdk.agent import AgentContext
+from pydantic_ai import Agent as PydanticAgent, RunContext
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
 
-# Create your agent
+# Create your GatherChat agent
 agent = Agent()
 
+# Initialize Pydantic AI agent with minimal configuration
+pydantic_agent = PydanticAgent(
+    "openai:gpt-4o",
+    deps_type=AgentContext,  # Use AgentContext as dependency type
+    instructions="You are a helpful AI assistant in a chat room. Be concise and friendly."
+)
+
+@pydantic_agent.instructions
+def add_context_instructions(ctx: RunContext[AgentContext]) -> str:
+    """Generate dynamic instructions based on the GatherChat context."""
+    context_parts = [
+        f"You are chatting with {ctx.deps.user.display_name} in '{ctx.deps.chat.name}'.",
+        f"There are {len(ctx.deps.chat.participants)} participants in this chat."
+    ]
+    
+    # Add recent conversation history if available
+    if ctx.deps.conversation_history:
+        context_parts.append("Recent conversation history:")
+        for msg in ctx.deps.conversation_history[-3:]:  # Last 3 messages
+            sender = msg.username or msg.agent_name or "Unknown"
+            context_parts.append(f"- {sender}: {msg.content}")
+    
+    return "\n".join(context_parts)
+
 @agent.on_message
-async def handle_message(message: str, user: str) -> str:
-    """
-    Handle incoming messages from users.
-    
-    Args:
-        message: The user's message text
-        user: The user's display name
-        
-    Returns:
-        The agent's response
-    """
-    # Simple echo response - customize this!
-    if "hello" in message.lower():
-        return f"Hello {user}! How can I help you today?"
-    
-    return f"You said: '{message}'. I'm a basic echo agent - customize me!"
+async def reply(ctx: AgentContext) -> str:
+    """Handle incoming messages using Pydantic AI with clean dependency injection."""
+    try:
+        # Run the Pydantic AI agent with the full AgentContext as dependency
+        result = await pydantic_agent.run(ctx.prompt, deps=ctx)
+        return result.output
+    except Exception as e:
+        return f"Sorry, I encountered an error processing your message."
 
 if __name__ == "__main__":
-    print("🤖 Starting agent...")
     agent.run()
 ```
 
-To add AI capabilities, simply replace the response logic with calls to your preferred LLM provider (OpenAI, Anthropic, etc.).
+This gives you a **production-ready AI agent** with rich context awareness powered by pydantic-ai!
 
 ## 📚 Documentation
 
