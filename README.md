@@ -102,4 +102,4 @@ Found a bug or have a feature request? [Open an issue](https://github.com/philma
 
 ---
 
-**gathersdk v0.0.2** - Built with ❤️ for the AI agent community
+**gathersdk v0.0.2**
