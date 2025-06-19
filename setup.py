@@ -10,9 +10,9 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="gathersdk",
-    version="0.0.1",
+    version="0.0.5.1",
     author="GatherChat Team",
-    author_email="sdk@gatherchat.com",
+    author_email="sdk@gather.is",
     description="Python SDK for building GatherChat agents",
     long_description=long_description,
     long_description_content_type="text/markdown",

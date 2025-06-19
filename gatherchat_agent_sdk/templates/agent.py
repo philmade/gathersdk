@@ -4,12 +4,12 @@ Pydantic AI Agent Example - A GatherChat agent powered by Pydantic AI
 """
 
 import logging
-logging.basicConfig(level=logging.INFO)
-
 from gatherchat_agent_sdk import MessageRouter
 from gatherchat_agent_sdk.agent import AgentContext
 from pydantic_ai import Agent as PydanticAgent, RunContext
 from dotenv import load_dotenv
+
+logging.basicConfig(level=logging.INFO)
 
 load_dotenv()
 
