@@ -1,5 +1,5 @@
 """
-Simple Agent - Pydantic-AI style interface for GatherChat
+Message Router - Clean interface for routing GatherChat messages to handlers
 """
 
 import asyncio
@@ -23,19 +23,21 @@ class MessageHandler(Protocol):
 MessageHandlerType = Callable[[AgentContext], Union[str, Awaitable[str]]]
 
 
-class Agent:
+class MessageRouter:
     """
-    Simple agent interface inspired by pydantic-ai.
+    Message router for GatherChat agents, inspired by pydantic-ai.
+    
+    Routes incoming messages to your handlers with rich context.
     
     Usage:
-        agent = Agent()
+        router = MessageRouter()
         
-        @agent.on_message
+        @router.on_message
         async def handle(ctx: AgentContext) -> str:
             # ctx: Rich context with user, chat, conversation history, etc.
             return f"Hello {ctx.user.display_name}! You said: {ctx.prompt}"
         
-        agent.run()
+        router.run()
     """
     
     def __init__(self):
@@ -49,7 +51,7 @@ class Agent:
         
         Your function must have this exact signature:
         
-        @agent.on_message
+        @router.on_message
         async def your_function(ctx: AgentContext) -> str:
             # ctx: Rich context containing:
             #   - ctx.user: User who sent the message (username, display_name, etc.)
@@ -66,17 +68,17 @@ class Agent:
         """Run the agent - connects to GatherChat and handles messages"""
         if not self._message_handler:
             raise ValueError(
-                "No message handler registered. Use @agent.on_message decorator:\n\n"
-                "@agent.on_message\n"
+                "No message handler registered. Use @router.on_message decorator:\n\n"
+                "@router.on_message\n"
                 "async def reply(ctx: AgentContext) -> str:\n"
                 "    return f'Hello {ctx.user.display_name}! You said: {ctx.prompt}'"
             )
         
-        print(f"🤖 Starting agent...")
+        print(f"🤖 Starting message router...")
         
         # Create internal BaseAgent wrapper
         class InternalAgent(BaseAgent):
-            def __init__(self, simple_agent: Agent):
+            def __init__(self, simple_agent: MessageRouter):
                 super().__init__(simple_agent.name, simple_agent.description)
                 self.simple_agent = simple_agent
             
@@ -116,8 +118,8 @@ class Agent:
         """
         if not self._message_handler:
             raise ValueError(
-                "No message handler registered. Use @agent.on_message decorator:\n\n"
-                "@agent.on_message\n"
+                "No message handler registered. Use @router.on_message decorator:\n\n"
+                "@router.on_message\n"
                 "async def reply(ctx: AgentContext) -> str:\n"
                 "    return f'Hello {ctx.user.display_name}! You said: {ctx.prompt}'"
             )

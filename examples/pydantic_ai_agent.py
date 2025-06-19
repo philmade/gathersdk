@@ -3,23 +3,26 @@
 Pydantic AI Agent Example - A GatherChat agent powered by Pydantic AI
 """
 
+import sys
+import os
+# Add the SDK to the path for this example
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
 import logging
 logging.basicConfig(level=logging.INFO)
 
 from gatherchat_agent_sdk import MessageRouter
 from gatherchat_agent_sdk.agent import AgentContext
 from pydantic_ai import Agent as PydanticAgent, RunContext
-from dotenv import load_dotenv
-
-load_dotenv()
 
 # Create your GatherChat message router
 router = MessageRouter()
 
 # Initialize Pydantic AI agent with minimal configuration and deps_type
 # You can set the model via environment variable PYDANTIC_AI_MODEL or default to OpenAI
+ai_model = os.getenv('PYDANTIC_AI_MODEL', 'openai:gpt-4o')
 pydantic_agent = PydanticAgent(
-    "openai:gpt-4o",
+    ai_model,
     deps_type=AgentContext,  # Use AgentContext as dependency type
     instructions="You are a helpful AI assistant in a chat room. Be concise and friendly."
 )
@@ -67,7 +70,7 @@ async def reply(ctx: AgentContext) -> str:
 
 if __name__ == "__main__":
     print("🤖 Starting message router...")
-    print(f"📍 Using model: gpt")
+    print(f"📍 Using model: {ai_model}")
     print("💡 Set PYDANTIC_AI_MODEL environment variable to use a different model")
     print("💡 Set OPENAI_API_KEY environment variable for OpenAI models")
     router.run()

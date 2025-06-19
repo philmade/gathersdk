@@ -1,105 +1,227 @@
 # GatherChat Agent SDK
 
-**From zero to live AI agent in 30 seconds.** Build agents that talk to real people through WebSockets - perfect for development and testing.
+A Python SDK for building intelligent agents that integrate with GatherChat.
 
-## Why GatherChat?
+## Features
 
-- 🚀 **Instant deployment** - Your local dev environment connects live to gather.is via WebSocket
-- 🧠 **Framework agnostic** - Use any AI framework (pydantic-ai, langchain, llamaindex, or build your own)
-- 🌐 **Real users, real testing** - Invite up to 5 people to test your agent while you develop
-- 🔄 **Live iteration** - Modify code and see changes instantly without redeployment
-- 📝 **Rich context** - Every message includes conversation history, user details, and chat metadata
+- **Simple API Key Authentication** - No complex OAuth flows, just use your agent key
+- **WebSocket-based Communication** - Real-time bidirectional messaging
+- **Automatic Reconnection** - Handles network interruptions gracefully
+- **Heartbeat Support** - Keeps connections alive with periodic heartbeats
+- **Type-Safe Context** - Pydantic models for all data structures
+- **Async/Await Support** - Modern Python async patterns
+- **Easy to Use** - Get started with just a few lines of code
 
-WebSockets are perfect for agent development - your local machine becomes part of the live chat infrastructure. No complex deployments, no server management, just code and test with real people immediately.
+## Installation
 
-## 🚀 Quick Start
+Install from GitHub:
 
-### 1. Get your API key
-Head to [gather.is](https://gather.is) → **Developer** button → Create agent → Copy your key
+```bash
+pip install git+https://github.com/your-org/gatherchat-agent-sdk.git
+```
 
-### 2. Create your agent in 30 seconds
+Or for development:
 
 ```bash
 pip install gathersdk
-mkdir my-agent && cd my-agent
-gathersdk init
 ```
 
-This creates a **fully functional pydantic-ai agent** with:
-- `agent.py` - Production-ready AI agent with rich context awareness
-- `.env.example` - Environment template  
-- `requirements.txt` - Dependencies
+## Quick Start
 
-### 3. Add your keys and run
+### 1. Create Your Agent in GatherChat
+
+1. Sign up at GatherChat
+2. Go to the Developer Portal  
+3. Create a new agent
+4. Copy your agent key (shown only once!)
+
+### 2. Write Your Agent
+
+Create `my_agent.py`:
+
+```python
+from gatherchat_agent_sdk import MessageRouter
+
+router = MessageRouter()
+
+@router.on_message
+async def reply(message: str, user: str) -> str:
+    """
+    Handle incoming messages.
+    
+    Args:
+        message: The user's message text
+        user: The user's display name
+    """
+    return f"Hello {user}! You said: '{message}'"
+
+if __name__ == "__main__":
+    router.run()
+```
+
+### 3. Set Up Authentication
+
+Create `.env`:
+
+```env
+GATHERCHAT_AGENT_KEY=your-agent-key-here
+```
+
+### 4. Run Your Agent
 
 ```bash
-cp .env.example .env
-# Edit .env: add your GATHERCHAT_AGENT_KEY and OPENAI_API_KEY
-python agent.py
+python my_agent.py
 ```
 
-**Your agent is now live!** 🎉 Go to the chat room URL, invite friends, and start testing.
+That's it! Your agent is now live in GatherChat.
 
-## 🧠 AgentContext: Rich Conversational Awareness
+## Agent Context
 
-Every message your agent receives includes powerful context through `AgentContext`:
+Every message your agent receives includes rich context:
 
 ```python
-@agent.on_message
-async def reply(ctx: AgentContext) -> str:
+async def process(self, context: AgentContext) -> str:
     # User information
-    user_name = ctx.user.display_name
-    user_id = ctx.user.user_id
+    user_id = context.user.user_id
+    username = context.user.username
+    display_name = context.user.display_name
     
-    # Chat environment  
-    chat_name = ctx.chat.name
-    participants = ctx.chat.participants
+    # Chat information
+    chat_id = context.chat.chat_id
+    chat_name = context.chat.name
+    participants = context.chat.participants
+    
+    # Message information
+    prompt = context.prompt  # The user's message
+    invocation_id = context.invocation_id  # Unique ID for this invocation
     
     # Conversation history
-    recent_messages = ctx.conversation_history[-5:]
+    for msg in context.conversation_history:
+        print(f"{msg.username}: {msg.content}")
     
-    # The current message
-    prompt = ctx.prompt
+    # Your response
+    return "Your response here"
 ```
 
-This rich context enables your agent to:
-- **Remember conversations** across messages
-- **Understand chat dynamics** with multiple participants  
-- **Personalize responses** based on user history
-- **Maintain context** in long-running conversations
+## Advanced Features
 
-## 🛠️ What Can You Build?
+### Streaming Responses
 
-The possibilities are endless. You can build anything that might interface with human input - news, research or market agents. You can agents that help with tasks, integrate with MCPs, code, social, game agents, media or even editing agents. If you want a more complex agent that has memory or file storage, just build it on your side of the websocket. Simple.
-
-**Go live in seconds** - test with real users immediately, iterate based on feedback, and deploy when ready.
-
-## 🚀 Roadmap
-
-- **v0.1** - Agents graduate from dev rooms to public gather.is integration
-- **Mobile apps** - Native iOS/Android support for agent interactions  
-- **Embeddable widgets** - Bring your agents to your website or app
-- **Advanced context** - File sharing, voice messages, multimedia support
-
-The generated `agent.py` gives you a **production-ready AI agent** powered by pydantic-ai with rich context awareness. Customize the instructions, add tools, integrate with databases, or connect to any API - the framework is completely agnostic.
+For long responses, you can stream chunks:
 
 ```python
-# Your agent automatically gets rich context
-@agent.on_message
-async def reply(ctx: AgentContext) -> str:
-    # Full conversation awareness + user details + chat metadata
-    result = await pydantic_agent.run(ctx.prompt, deps=ctx)
-    return result.output
+class StreamingAgent(BaseAgent):
+    async def process_streaming(self, context: AgentContext):
+        """Stream response chunks."""
+        response = "This is a long response..."
+        
+        # Stream word by word
+        for word in response.split():
+            yield word + " "
+            await asyncio.sleep(0.1)  # Simulate processing
 ```
 
-## 📝 License
+### Initialization and Cleanup
 
-MIT License - see [LICENSE](LICENSE) file for details.
+```python
+class StatefulAgent(BaseAgent):
+    async def initialize(self):
+        """Called once when agent starts."""
+        self.db = await connect_to_database()
+        self.model = await load_model()
+    
+    async def cleanup(self):
+        """Called when agent shuts down."""
+        await self.db.close()
+        await self.model.unload()
+```
 
-## 🐛 Issues
+### Custom Validation
 
-Found a bug or have a feature request? [Open an issue](https://github.com/philmade/gathersdk/issues) on GitHub.
+```python
+class ValidatingAgent(BaseAgent):
+    def validate_context(self, context: AgentContext):
+        """Validate context before processing."""
+        if len(context.prompt) > 1000:
+            raise ValueError("Message too long")
+        
+        if "spam" in context.prompt.lower():
+            raise ValueError("Spam detected")
+```
 
----
+### Manual Client Control
 
-**gathersdk v0.0.2**
+For more control, use the `AgentClient` directly:
+
+```python
+from gathersdk import AgentClient
+
+async def main():
+    agent = MyAgent("my-agent", "Description")
+    
+    async with AgentClient(agent) as client:
+        await client.run()
+
+asyncio.run(main())
+```
+
+## Configuration
+
+### Environment Variables
+
+- `GATHERCHAT_AGENT_KEY` - Your agent's API key (required)
+- `GATHERCHAT_API_URL` - API base URL (default: `http://localhost:8085`)
+
+### Client Options
+
+```python
+from gathersdk import AgentClient
+
+client = AgentClient(
+    agent=my_agent,
+    agent_key="your-key",  # Override env var
+    api_url="https://api.gatherchat.com",  # Override env var
+    heartbeat_interval=30  # Seconds between heartbeats
+)
+```
+
+## Error Handling
+
+The SDK handles errors gracefully:
+
+- **Authentication errors** - Check your agent key
+- **Connection errors** - Automatic reconnection with exponential backoff
+- **Processing errors** - Errors are logged and reported back to GatherChat
+- **Validation errors** - Raised before processing begins
+
+## Examples
+
+See the `examples/` directory for working examples:
+
+- `minimal_agent.py` - The simplest possible agent (perfect starting point)
+
+## Development
+
+### Running Tests
+
+```bash
+pytest tests/
+```
+
+### Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests
+5. Submit a pull request
+
+## Support
+
+- GitHub Issues: https://github.com/your-org/gatherchat-agent-sdk/issues
+- Documentation: https://docs.gatherchat.com/sdk
+- Discord: https://discord.gg/gatherchat
+
+## License
+
+MIT License - see LICENSE file for details

@@ -95,8 +95,13 @@ class AgentClient:
             # Wait for auth confirmation
             auth_response = await self.websocket.receive_json()
             
-            # Check if auth was successful (success is in the data field)
-            data = auth_response.get("data", {})
+            # PicoSocket wraps response in event envelope: {"type": "event_response", "event": "agent_auth_simple", "data": {...}}
+            if auth_response.get("type") == "event_response" and auth_response.get("event") == "agent_auth_simple":
+                data = auth_response.get("data", {})
+            else:
+                # Fallback for direct response format
+                data = auth_response
+                
             if data.get("success") is True:
                 # Get the REAL agent name from server (not what client claims)
                 self.authenticated_agent_name = data.get('agent_name', 'Unknown')
@@ -336,9 +341,9 @@ class AgentClient:
         reconnect_attempts = 0
         max_reconnect_delay = 60
         
-        print(f"🤖 Starting {self.agent.name} agent...")
+        print(f"🤖 Starting message router...")
         print(f"📡 Waiting for invocations...")
-        logger.info(f"🤖 Starting {self.agent.name} agent...")
+        logger.info(f"🤖 Starting message router...")
         logger.info(f"📡 Waiting for invocations...")
         
         while self.running:

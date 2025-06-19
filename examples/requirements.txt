@@ -1,0 +1,9 @@
+# Requirements for example agents
+
+# For pydantic_ai_agent.py
+pydantic-ai>=0.1.0
+
+# Optional: For specific model providers
+# openai  # For OpenAI models (gpt-4o, etc)
+# anthropic  # For Claude models
+# google-generativeai  # For Google Gemini models

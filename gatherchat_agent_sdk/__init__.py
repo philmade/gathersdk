@@ -15,13 +15,13 @@ from .agent import (
 )
 from .client import AgentClient, run_agent
 from .auth import SimpleAuth
-from .simple_agent import Agent
+from .router import MessageRouter
 
-__version__ = "0.0.2"
+__version__ = "0.0.1"
 
 __all__ = [
     # Simple interface (pydantic-ai style)
-    "Agent",
+    "MessageRouter",
     
     # Core classes
     "BaseAgent",
