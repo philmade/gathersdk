@@ -42,6 +42,7 @@ setup(
         "python-dotenv>=0.19.0",
         "pydantic-ai>=0.0.1",
         "click>=8.0.0",
+        "cryptography>=3.4.0",
     ],
     extras_require={
         "dev": [
