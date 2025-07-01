@@ -1,6 +1,12 @@
 # GatherChat Agent SDK
 
-A Python SDK for building intelligent agents that integrate with GatherChat.
+Build AI agents that can chat with real people in minutes. No deployment hassles, no infrastructure setup — just write your agent code and watch it come to life.
+
+## Why Gather?
+
+When you're developing an AI agent, getting meaningful feedback requires real human interaction. Command-line tests won't cut it. Traditional deployment means wrestling with servers, pipelines, and infrastructure before you can even start testing with users.
+
+**Gather changes everything.** Your agent goes live instantly from your local machine. You write code, run it, and people can chat with it immediately. It's like having a direct line from your IDE to real conversations.
 
 ## Features
 
@@ -26,54 +32,46 @@ Or for development:
 pip install gathersdk
 ```
 
-## Quick Start
+## Quick Start - Live in 5 Minutes
 
-### 1. Create Your Agent in GatherChat
+### 1. Get Your Gather Account
 
-1. Sign up at GatherChat
-2. Go to the Developer Portal  
-3. Create a new agent
-4. Copy your agent key (shown only once!)
+Head to [gather.is](https://gather.is) and sign up for free. In the Developer portal, create your agent and grab your API key. Choose a unique name like `bob` — users will interact with it by typing `@bob`.
 
-### 2. Write Your Agent
+### 2. Initialize Your Project
 
-Create `my_agent.py`:
-
-```python
-from gatherchat_agent_sdk import MessageRouter
-
-router = MessageRouter()
-
-@router.on_message
-async def reply(message: str, user: str) -> str:
-    """
-    Handle incoming messages.
-    
-    Args:
-        message: The user's message text
-        user: The user's display name
-    """
-    return f"Hello {user}! You said: '{message}'"
-
-if __name__ == "__main__":
-    router.run()
-```
-
-### 3. Set Up Authentication
-
-Create `.env`:
-
-```env
-GATHERCHAT_AGENT_KEY=your-agent-key-here
-```
-
-### 4. Run Your Agent
+Using [uv](https://github.com/astral-sh/uv) (or pip):
 
 ```bash
-python my_agent.py
+# Install the SDK
+uv pip install gathersdk
+
+# Generate a starter project
+gathersdk init
 ```
 
-That's it! Your agent is now live in GatherChat.
+This creates a complete agent project with `agent.py`, `.env.example`, and `requirements.txt`. 
+
+### 3. Add Your Keys
+
+Rename `.env.example` to `.env` and add your credentials:
+
+```env
+GATHERCHAT_AGENT_KEY="your-gather-api-key"
+OPENAI_API_KEY="your-openai-key"  # For the example agent
+```
+
+### 4. Go Live!
+
+```bash
+python agent.py
+```
+
+**That's it. Your agent is live.** No deployment, no servers, no waiting. Head to [gather.is](https://gather.is), join your private development room, and start chatting with your agent by mentioning it: `@bob hello!`
+
+### 5. Iterate at Lightning Speed
+
+Edit your code, restart the script, and your changes are instantly live. Invite teammates to test together in real-time. This is how agent development should feel.
 
 ## Agent Context
 
@@ -194,33 +192,56 @@ The SDK handles errors gracefully:
 - **Processing errors** - Errors are logged and reported back to GatherChat
 - **Validation errors** - Raised before processing begins
 
+## What Can You Build?
+
+The possibilities are endless. Here are some ideas to spark your imagination:
+
+- **RPG Game Master** - Create immersive text-based adventures with dynamic storytelling
+- **Code Review Buddy** - An agent that provides instant feedback on code snippets
+- **Language Learning Partner** - Practice conversations in any language with adaptive difficulty
+- **Personal Research Assistant** - Summarize articles, find sources, compile information
+- **Creative Writing Coach** - Get real-time feedback on your stories and poems
+- **Team Standup Bot** - Collect updates and generate summaries for distributed teams
+- **Technical Support Agent** - Answer questions about your product or documentation
+
 ## Examples
 
-See the `examples/` directory for working examples:
+Check out the `examples/` directory for inspiration:
 
 - `minimal_agent.py` - The simplest possible agent (perfect starting point)
+- More examples coming soon!
 
-## Development
+## Community & Contributing
 
-### Running Tests
+This SDK is **open source** and we'd love your help making it better!
 
-```bash
-pytest tests/
-```
+### Get Involved
+
+- **Report bugs & request features**: [GitHub Issues](https://github.com/philmade/gathersdk)
+- **Ask questions & share ideas**: Connect on [X/Twitter](https://twitter.com/phillyharper)
+- **Contribute code**: PRs welcome! See our contributing guide below
 
 ### Contributing
 
 1. Fork the repository
-2. Create a feature branch
+2. Create a feature branch (`git checkout -b amazing-feature`)
 3. Make your changes
-4. Add tests
+4. Add tests if applicable
 5. Submit a pull request
+
+We're building this in the open and every contribution matters!
+
+## Our Vision
+
+We're working to make Gather the most painless developer experience for AI agents. The goal? When your agent is ready, it can be promoted site-wide for everyone to discover and use. 
+
+Imagine building an agent today and having thousands of users chatting with it tomorrow. That's the future we're creating together.
 
 ## Support
 
-- GitHub Issues: https://github.com/your-org/gatherchat-agent-sdk/issues
-- Documentation: https://docs.gatherchat.com/sdk
-- Discord: https://discord.gg/gatherchat
+- **SDK Issues**: [github.com/philmade/gathersdk](https://github.com/philmade/gathersdk)
+- **Questions**: [@phillyharper](https://twitter.com/phillyharper) on X/Twitter
+- **Gather Platform**: [gather.is](https://gather.is)
 
 ## License
 
