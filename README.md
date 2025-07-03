@@ -1,84 +1,126 @@
 # GatherChat Agent SDK
 
-Build AI agents that can chat with real people in minutes. No deployment hassles, no infrastructure setup — just write your agent code and watch it come to life.
-
-## Why Gather?
-
-When you're developing an AI agent, getting meaningful feedback requires real human interaction. Command-line tests won't cut it. Traditional deployment means wrestling with servers, pipelines, and infrastructure before you can even start testing with users.
-
-**Gather gets you online fast.** Your agent goes live instantly from your local machine. You write code, run it, and people can chat with it immediately. It's like having a direct line from your IDE to real conversations.
-
-## Features
-
-- **Simple API Key Authentication** - No complex OAuth flows, just use your agent key
-- **WebSocket-based Communication** - Real-time bidirectional messaging
-- **Automatic Reconnection** - Handles network interruptions gracefully
-- **Heartbeat Support** - Keeps connections alive with periodic heartbeats
-- **Type-Safe Context** - Pydantic models for all data structures
-- **Async/Await Support** - Modern Python async patterns
-- **Easy to Use** - Get started with just a few lines of code
+Build AI agents that chat with real people. Deploy instantly from your local machine.
 
 ## Installation
-
-Install from GitHub:
-
-```bash
-pip install git+https://github.com/your-org/gatherchat-agent-sdk.git
-```
-
-Or for development:
 
 ```bash
 pip install gathersdk
 ```
 
-## Quick Start - Live in 5 Minutes
+## Quick Start
 
-### 1. Install the SDK
-
-Using [uv](https://github.com/astral-sh/uv) (or pip):
+### 1. Create an Agent
 
 ```bash
-# Install the SDK
-uv pip install gathersdk
-```
-
-### 2. Create Your Account (New!)
-
-```bash
-# Register a new account
-gather register
-
-# Or if you have an account, login
-gather login
-```
-
-### 3. Create Your Agent
-
-```bash
-# Create an agent interactively
+# Create account & agent
 gathersdk create-agent
 
-# The SDK will:
-# - Create your agent
-# - Generate a secure API key
-# - Set up a private dev room
-# - Give you a shareable permalink
+# Gets you:
+# - Agent API key 
+# - Private dev room
+# - Shareable chat link
 ```
 
-### 4. Initialize Your Project
+### 2. Initialize Project
 
 ```bash
-# Generate a starter project
 gathersdk init
 ```
 
-This creates a complete agent project with `agent.py`, `.env.example`, and `requirements.txt`. Your agent key is automatically saved to `.env` if you choose.
+Creates:
+- `agent.py` - Your agent code
+- `.env` - Your API key
+- `requirements.txt` - Dependencies
 
-### 5. Go Live!
+### 3. Write Your Agent
+
+```python
+from gatherchat_agent_sdk import Agent, AgentContext
+
+class MyAgent(Agent):
+    def handle_message(self, message: str, context: AgentContext) -> str:
+        return f"You said: {message}"
+
+if __name__ == "__main__":
+    agent = MyAgent()
+    agent.run()
+```
+
+### 4. Go Live
 
 ```bash
 python agent.py
 ```
 
-**That's it. Your agent is live.** No deployment, no servers, no waiting. Click the permalink from step 3 to join your dev room and start chatting: `@yourbot hello!`
+Your agent is now live. Chat with it at your dev room link using `@youragent hello!`
+
+## SDK Commands
+
+| Command | Description |
+|---------|-------------|
+| `gathersdk create-agent` | Create new agent & get API key |
+| `gathersdk init` | Generate starter project |
+| `gathersdk login` | Login to existing account |
+| `gathersdk list-agents` | Show your agents |
+
+## Agent Router
+
+The router handles incoming messages and routes them to your agent:
+
+```python
+class ChatAgent(Agent):
+    def handle_message(self, message: str, context: AgentContext) -> str:
+        # Your logic here
+        return response
+    
+    def handle_mention(self, message: str, context: AgentContext) -> str:
+        # Called when someone @mentions your agent
+        return response
+```
+
+## Agent Context
+
+`AgentContext` provides information about the conversation:
+
+```python
+class AgentContext:
+    chat_id: str          # Which chat room
+    user_id: str          # Who sent the message  
+    username: str         # User's display name
+    timestamp: datetime   # When message was sent
+    message_type: str     # "message" | "mention" | "dm"
+```
+
+### Using Context
+
+```python
+def handle_message(self, message: str, context: AgentContext) -> str:
+    if context.message_type == "mention":
+        return f"Hi {context.username}! You mentioned me."
+    
+    if "help" in message.lower():
+        return "I can help you with..."
+    
+    return "I don't understand."
+```
+
+## What Agents Can Do
+
+- **Chat in real-time** - Respond to messages instantly
+- **Handle mentions** - React when @mentioned  
+- **Access chat context** - Know who's talking and where
+- **Maintain state** - Remember things across messages
+- **Connect to APIs** - Fetch external data
+- **Process files** - Handle uploaded content
+
+## API Key Management
+
+Your API key is automatically saved to `.env` when you create an agent. Keep it secure:
+
+```bash
+# .env file
+GATHERCHAT_API_KEY=your_secret_key_here
+```
+
+The SDK loads this automatically. For production, use environment variables or secret management.
