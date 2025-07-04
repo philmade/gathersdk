@@ -171,16 +171,28 @@ class AgentClient:
                 username = data.get('username', 'Unknown')
                 chat_id = data.get('chat_id', '')
                 user_id = data.get('user_id', 'unknown')  # Get user_id from broadcast
+                target_agent = data.get('target_agent', None)  # Check if this is a direct widget message
                 
                 # Debug: log agent name check
                 logger.info(f"🔍 Checking if '{content}' is for agent '{self.authenticated_agent_name}'")
                 
-                # Check if this is an @mention for this agent (use authenticated name, not client-provided)
-                if content.startswith(f"@{self.authenticated_agent_name} "):
+                # Check if this is for this agent
+                is_for_agent = False
+                
+                # Case 1: Direct widget message (has target_agent field)
+                if target_agent and target_agent == self.authenticated_agent_name:
+                    logger.info(f"🎯 Direct widget message for {self.authenticated_agent_name}")
+                    is_for_agent = True
+                    message = content  # Use content as-is
+                
+                # Case 2: Regular @mention
+                elif content.startswith(f"@{self.authenticated_agent_name} "):
                     # Extract the actual message after @agent_name
                     message = content[len(f"@{self.authenticated_agent_name} "):].strip()
-                    
-                    logger.info(f"🧠 Detected mention from {username}: '{message}'")
+                    is_for_agent = True
+                
+                if is_for_agent:
+                    logger.info(f"🧠 Detected message from {username}: '{message}'")
                     logger.info(f"⏳ Waiting for server to send rich context via agent_invoke_streaming event...")
                     
                     # The server will automatically send context via agent_invoke_streaming event
