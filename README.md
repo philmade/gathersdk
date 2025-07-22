@@ -124,3 +124,29 @@ GATHERCHAT_API_KEY=your_secret_key_here
 ```
 
 The SDK loads this automatically. For production, use environment variables or secret management.
+
+## Development Configuration
+
+By default, the SDK connects to the production GatherChat servers. For local development:
+
+```bash
+# .env file
+GATHERCHAT_AGENT_KEY=your_secret_key_here
+
+# For local development (optional)
+GATHERCHAT_WS_URL=ws://127.0.0.1:8090/ws
+GATHERCHAT_API_URL=http://127.0.0.1:8090
+```
+
+**Environment Variables:**
+- `GATHERCHAT_AGENT_KEY` - Your agent's API key (required)
+- `GATHERCHAT_WS_URL` - WebSocket URL override (optional, defaults to production)
+- `GATHERCHAT_API_URL` - API base URL override (optional, defaults to production)
+
+**Production URLs (defaults):**
+- WebSocket: `wss://gather.is/ws`
+- API: `https://gather.is`
+
+**Local Development:**
+- WebSocket: `ws://127.0.0.1:8090/ws`
+- API: `http://127.0.0.1:8090`

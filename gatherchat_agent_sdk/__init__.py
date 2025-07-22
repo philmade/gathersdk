@@ -1,7 +1,7 @@
 """
-GatherChat Agent SDK
+GoGather Agent SDK
 
-A Python SDK for building agents that integrate with GatherChat.
+A Python SDK for building agents that integrate with GoGather WebSocket system.
 """
 
 from .agent import (
@@ -15,20 +15,14 @@ from .agent import (
 )
 from .client import AgentClient, run_agent
 from .auth import SimpleAuth
-from .router import MessageRouter
-from .crypto import AgentCrypto
 
 __version__ = "0.0.1"
 
 __all__ = [
-    # Simple interface (pydantic-ai style)
-    "MessageRouter",
-    
     # Core classes
     "BaseAgent",
     "AgentClient",
     "SimpleAuth",
-    "AgentCrypto",
     
     # Context models
     "AgentContext",

@@ -79,14 +79,11 @@ class AgentClient:
             
             logger.info("WebSocket connected, authenticating...")
             
-            # First, receive the welcome message
-            welcome_msg = await self.websocket.receive_json()
-            
-            # Send authentication event
+            # Send authentication event (GoGather format - no welcome message)
             auth_message = {
-                "event": "agent_auth_simple",
+                "event": "authenticate_with_api_key",
                 "data": {
-                    "agent_key": self.auth.agent_key
+                    "api_key": self.auth.agent_key
                 }
             }
             
@@ -95,24 +92,18 @@ class AgentClient:
             # Wait for auth confirmation
             auth_response = await self.websocket.receive_json()
             
-            # PicoSocket wraps response in event envelope: {"type": "event_response", "event": "agent_auth_simple", "data": {...}}
-            if auth_response.get("type") == "event_response" and auth_response.get("event") == "agent_auth_simple":
+            # GoGather auth response format: {"event": "authSuccess", "data": {"user_id": "...", "username": "..."}}
+            if auth_response.get("event") == "authSuccess":
                 data = auth_response.get("data", {})
-            else:
-                # Fallback for direct response format
-                data = auth_response
-                
-            if data.get("success") is True:
                 # Get the REAL agent name from server (not what client claims)
-                self.authenticated_agent_name = data.get('agent_name', 'Unknown')
+                self.authenticated_agent_name = data.get('username', 'Unknown')
                 logger.info(f"✅ Authenticated as agent: {self.authenticated_agent_name}")
                 
                 # Initialize the agent
                 await self.agent.initialize()
                 
-                # Note: Heartbeat disabled - server uses WebSocket ping/pong automatically
             else:
-                error_msg = data.get("message", "Authentication failed")
+                error_msg = auth_response.get("message", "Authentication failed")
                 raise Exception(f"Authentication failed: {error_msg}")
                 
         except Exception as e:
@@ -203,23 +194,26 @@ class AgentClient:
             except Exception as e:
                 logger.error(f"❌ Error processing message: {e}")
         
-        # Handle rich context delivery (same as built-in agents receive)
-        elif event == "agent_invoke_streaming":
-            logger.info(f"🎯 Received rich context from server for user: {data.get('user', {}).get('username')}")
+        # Handle GoGather agent invocation (replaces FastAPI agent_invoke_streaming)
+        elif event == "agent_invocation":
+            logger.info(f"🎯 Received GoGather agent invocation for user: {data.get('context', {}).get('user', {}).get('username')}")
             
             try:
-                # Parse the rich context (same format as built-in agents get)
+                # Parse the GoGather invocation format
                 from .agent import AgentContext, UserContext, ChatContext, MessageContext
                 
-                # Build AgentContext from server data
-                user_data = data.get('user', {})
+                invocation_id = data.get('invocation_id')
+                context_data = data.get('context', {})
+                
+                # Build AgentContext from GoGather server data
+                user_data = context_data.get('user', {})
                 user_context = UserContext(
                     user_id=user_data.get('user_id'),
                     username=user_data.get('username'),
                     display_name=user_data.get('display_name')
                 )
                 
-                chat_data = data.get('chat', {})
+                chat_data = context_data.get('chat', {})
                 # Parse participants
                 participants = []
                 for p_data in chat_data.get('participants', []):
@@ -239,7 +233,7 @@ class AgentClient:
                 
                 # Parse conversation history
                 conversation_history = []
-                for msg_data in data.get('conversation_history', []):
+                for msg_data in context_data.get('conversation_history', []):
                     conversation_history.append(MessageContext(
                         id=msg_data.get('id'),
                         user_id=msg_data.get('user_id'),
@@ -253,37 +247,48 @@ class AgentClient:
                 context = AgentContext(
                     user=user_context,
                     chat=chat_context,
-                    prompt=data.get('prompt'),
+                    prompt=context_data.get('prompt'),
                     conversation_history=conversation_history,
-                    invocation_id=data.get('invocation_id'),
-                    metadata=data.get('metadata', {})
+                    invocation_id=invocation_id,
+                    metadata=context_data.get('metadata', {})
                 )
                 
-                logger.info(f"🧠 Processing with rich context: {len(conversation_history)} messages, {len(participants)} participants")
+                logger.info(f"🧠 Processing GoGather invocation: {len(conversation_history)} messages, {len(participants)} participants")
                 
                 # Process with the agent using the rich context
                 response = await self.agent.process(context)
                 logger.info(f"💬 Agent response: '{response}'")
                 
-                # Send response back to chat
+                # Send response back using GoGather agent_response format
                 await self.websocket.send_json({
-                    "event": "send_message",
+                    "event": "agent_response",
                     "data": {
-                        "chat_id": context.chat.chat_id,
-                        "content": response
+                        "invocation_id": invocation_id,
+                        "response": response,
+                        "error": ""
                     }
                 })
                 
-                logger.info(f"✅ Sent response to chat using rich context")
+                logger.info(f"✅ Sent GoGather agent response for invocation {invocation_id}")
                 
             except Exception as e:
-                logger.error(f"❌ Error processing rich context: {e}")
+                logger.error(f"❌ Error processing GoGather invocation: {e}")
                 import traceback
                 logger.error(traceback.format_exc())
+                
+                # Send error response using GoGather format
+                await self.websocket.send_json({
+                    "event": "agent_response",
+                    "data": {
+                        "invocation_id": data.get('invocation_id', 'unknown'),
+                        "response": "",
+                        "error": str(e)
+                    }
+                })
         
-        # Handle legacy streaming (for backwards compatibility)
-        elif event == "agent_invoke_streaming_legacy":
-            logger.info(f"Received legacy streaming invocation")
+        # Handle legacy FastAPI streaming (for backwards compatibility)
+        elif event == "agent_invoke_streaming":
+            logger.info(f"Received legacy FastAPI streaming invocation")
             
             try:
                 # Parse context
@@ -314,10 +319,10 @@ class AgentClient:
                     }
                 })
                 
-                logger.info("✅ Completed legacy streaming response")
+                logger.info("✅ Completed legacy FastAPI streaming response")
                 
             except Exception as e:
-                logger.error(f"Error in legacy streaming: {e}")
+                logger.error(f"Error in legacy FastAPI streaming: {e}")
                 
                 # Send error
                 await self.websocket.send_json({
