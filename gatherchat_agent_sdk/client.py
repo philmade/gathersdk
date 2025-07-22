@@ -57,7 +57,8 @@ class AgentClient:
         self.session: Optional[aiohttp.ClientSession] = None
         self.running = False
         self._reconnect_delay = 5
-        self.authenticated_agent_name: Optional[str] = None  # Set during authentication
+        self.authenticated_agent_name: Optional[str] = None  # Set during authentication (display name)
+        self.authenticated_username: Optional[str] = None    # Set during authentication (username for @mentions)
         # Note: Heartbeat task removed
     
     async def connect(self) -> None:
@@ -92,12 +93,13 @@ class AgentClient:
             # Wait for auth confirmation
             auth_response = await self.websocket.receive_json()
             
-            # GoGather auth response format: {"event": "authSuccess", "data": {"user_id": "...", "username": "..."}}
+            # GoGather auth response format: {"event": "authSuccess", "data": {"user_id": "...", "username": "...", "name": "..."}}
             if auth_response.get("event") == "authSuccess":
                 data = auth_response.get("data", {})
-                # Get the REAL agent name from server (not what client claims)
-                self.authenticated_agent_name = data.get('username', 'Unknown')
-                logger.info(f"✅ Authenticated as agent: {self.authenticated_agent_name}")
+                # Get the REAL agent name from server (prefer display name over username)
+                self.authenticated_agent_name = data.get('name') or data.get('username', 'Unknown')
+                self.authenticated_username = data.get('username', 'Unknown')
+                logger.info(f"✅ Authenticated as agent: {self.authenticated_agent_name} (@{self.authenticated_username})")
                 
                 # Initialize the agent
                 await self.agent.initialize()
@@ -177,9 +179,9 @@ class AgentClient:
                     message = content  # Use content as-is
                 
                 # Case 2: Regular @mention
-                elif content.startswith(f"@{self.authenticated_agent_name} "):
-                    # Extract the actual message after @agent_name
-                    message = content[len(f"@{self.authenticated_agent_name} "):].strip()
+                elif content.startswith(f"@{self.authenticated_username} "):
+                    # Extract the actual message after @username (people @mention using username, not display name)
+                    message = content[len(f"@{self.authenticated_username} "):].strip()
                     is_for_agent = True
                 
                 if is_for_agent:
