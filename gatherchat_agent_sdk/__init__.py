@@ -16,7 +16,7 @@ from .agent import (
 from .client import AgentClient, run_agent
 from .auth import SimpleAuth
 
-__version__ = "0.0.6.4"
+__version__ = "0.0.6.5"
 
 __all__ = [
     # Core classes

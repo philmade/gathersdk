@@ -56,6 +56,10 @@ class AgentContext(BaseModel):
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     metadata: Dict[str, Any] = Field(default_factory=dict)
     session_data: Dict[str, Any] = Field(default_factory=dict)
+    knowledge_graph: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Runtime knowledge graph built from function calls"
+    )
 
 
 # === BASE AGENT CLASS ===
