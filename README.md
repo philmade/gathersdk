@@ -36,7 +36,7 @@ Creates:
 ### 3. Write Your Agent
 
 ```python
-from gatherchat_agent_sdk import Agent, AgentContext
+from gathersdk import Agent, AgentContext
 
 class MyAgent(Agent):
     def handle_message(self, message: str, context: AgentContext) -> str:

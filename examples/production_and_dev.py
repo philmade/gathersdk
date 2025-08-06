@@ -14,7 +14,7 @@ Local Development:
 import os
 import asyncio
 import logging
-from gatherchat_agent_sdk import BaseAgent, AgentContext, run_agent
+from gathersdk import BaseAgent, AgentContext, run_agent
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)

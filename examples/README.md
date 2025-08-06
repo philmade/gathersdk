@@ -31,7 +31,7 @@ The simplest possible agent. Perfect starting point for new developers.
 
 **Code pattern**:
 ```python
-from gatherchat_agent_sdk import MessageRouter
+from gathersdk import MessageRouter
 
 router = MessageRouter()
 
@@ -60,7 +60,7 @@ An AI-powered agent using Pydantic AI for intelligent responses.
 
 **Code pattern**:
 ```python
-from gatherchat_agent_sdk import MessageRouter
+from gathersdk import MessageRouter
 from pydantic_ai import Agent as PydanticAgent, RunContext
 
 router = MessageRouter()

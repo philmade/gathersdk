@@ -10,7 +10,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="gathersdk",
-    version="0.0.6.6",
+    version="0.0.7",
     author="GatherChat Team",
     author_email="sdk@gather.is",
     description="Python SDK for building GatherChat agents",
@@ -20,7 +20,7 @@ setup(
     keywords="gatherchat gathersdk agent chatbot websocket async",
     packages=find_packages(),
     package_data={
-        'gatherchat_agent_sdk': ['templates/*'],
+        'gathersdk': ['templates/*'],
     },
     include_package_data=True,
     classifiers=[
@@ -55,8 +55,8 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "gathersdk=gatherchat_agent_sdk.cli:main",
-            "gather=gatherchat_agent_sdk.cli:main",
+            "gathersdk=gathersdk.cli:main",
+            "gather=gathersdk.cli:main",
         ],
     },
     project_urls={

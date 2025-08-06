@@ -11,9 +11,37 @@ from datetime import datetime, timezone
 import aiohttp
 
 from .auth import SimpleAuth
-from .agent import BaseAgent, AgentContext
+from .agent import BaseAgent, AgentContext, UserContext, ChatContext, MessageContext
 
 logger = logging.getLogger(__name__)
+
+
+def parse_datetime(date_str: Optional[str]) -> datetime:
+    """
+    Parse datetime string from Go server, handling various formats.
+    
+    Handles:
+    - ISO format with 'Z' suffix (e.g., '2024-01-01T12:00:00Z')
+    - ISO format without 'Z' (e.g., '2024-01-01T12:00:00')
+    - Go zero time value ('0001-01-01T00:00:00Z')
+    - None or empty strings
+    """
+    if not date_str:
+        return datetime.now(timezone.utc)
+    
+    # Handle Go's zero time value
+    if date_str.startswith('0001-01-01'):
+        return datetime.now(timezone.utc)
+    
+    # Remove 'Z' suffix if present and add UTC timezone
+    if date_str.endswith('Z'):
+        date_str = date_str[:-1] + '+00:00'
+    
+    try:
+        return datetime.fromisoformat(date_str)
+    except ValueError:
+        logger.warning(f"Could not parse datetime: {date_str}, using current time")
+        return datetime.now(timezone.utc)
 
 
 class AgentClient:
@@ -202,7 +230,6 @@ class AgentClient:
             
             try:
                 # Parse the GoGather invocation format
-                from .agent import AgentContext, UserContext, ChatContext, MessageContext
                 
                 invocation_id = data.get('invocation_id')
                 context_data = data.get('context', {})
@@ -229,7 +256,7 @@ class AgentClient:
                     chat_id=chat_data.get('chat_id'),
                     name=chat_data.get('name'),
                     creator_id=chat_data.get('creator_id'),
-                    created_at=datetime.fromisoformat(chat_data.get('created_at')) if chat_data.get('created_at') else datetime.now(timezone.utc),
+                    created_at=parse_datetime(chat_data.get('created_at')),
                     participants=participants
                 )
                 
@@ -243,7 +270,7 @@ class AgentClient:
                         content=msg_data.get('content'),
                         message_type=msg_data.get('message_type'),
                         agent_name=msg_data.get('agent_name'),
-                        created_at=datetime.fromisoformat(msg_data.get('created_at')) if msg_data.get('created_at') else datetime.now(timezone.utc)
+                        created_at=parse_datetime(msg_data.get('created_at'))
                     ))
                 
                 context = AgentContext(
@@ -428,7 +455,7 @@ def run_agent(agent: BaseAgent, **kwargs):
         **kwargs: Additional arguments for AgentClient
     
     Example:
-        from gatherchat_agent_sdk import BaseAgent, AgentContext, run_agent
+        from gathersdk import BaseAgent, AgentContext, run_agent
         
         class MyAgent(BaseAgent):
             async def process(self, context: AgentContext) -> str:

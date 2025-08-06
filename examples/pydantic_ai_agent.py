@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import logging
 logging.basicConfig(level=logging.INFO)
 
-from gatherchat_agent_sdk import MessageRouter
+from gathersdk import MessageRouter
 from gatherchat_agent_sdk.agent import AgentContext
 from pydantic_ai import Agent as PydanticAgent, RunContext
 
