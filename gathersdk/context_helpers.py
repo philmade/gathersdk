@@ -136,3 +136,29 @@ async def dump_kg_state(context: AgentContext) -> str:
     kg_manager = ensure_kg_manager(context)
     visualizer = KGVisualizer(kg_manager)
     return await visualizer.render_structured_dump()
+
+
+def format_conversation_history(agent_context: AgentContext, max_messages: int = 10) -> str:
+    """
+    Format conversation history for agents using custom dependencies.
+    
+    This is a convenience function for agents that don't use AgentContext directly
+    but store it in custom dependency objects (like SearchBrowseGraph.agent_context).
+    
+    Args:
+        agent_context: The AgentContext object containing conversation history
+        max_messages: Maximum number of recent messages to include (default: 10)
+        
+    Returns:
+        Formatted string with conversation history or empty string if no history
+        
+    Example:
+        # For agents with custom dependencies like Deep Agent:
+        if ctx.deps.agent_context:
+            history = format_conversation_history(ctx.deps.agent_context, 5)
+            return f"{history}Current user: {ctx.deps.agent_context.user.display_name}"
+    """
+    if not agent_context:
+        return ""
+        
+    return agent_context.format_conversation_history(max_messages)

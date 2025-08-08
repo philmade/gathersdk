@@ -25,6 +25,7 @@ class ChatContext(BaseModel):
     creator_id: str
     created_at: datetime
     participants: List[UserContext] = []
+    email_address: Optional[str] = None
 
 
 class MessageContext(BaseModel):
@@ -60,6 +61,49 @@ class AgentContext(BaseModel):
         default_factory=dict,
         description="Runtime knowledge graph built from function calls"
     )
+    
+    def format_conversation_history(self, max_messages: int = 10) -> str:
+        """
+        Format conversation history into a standardized string for agent instructions.
+        
+        Args:
+            max_messages: Maximum number of recent messages to include (default: 10)
+            
+        Returns:
+            Formatted string with conversation history or empty string if no history
+            
+        Example:
+            >>> ctx.format_conversation_history(5)
+            "\\n\\n--- CONVERSATION HISTORY ---\\n
+            User: Hello there
+            Agent(search): I'll help you search for information
+            User: Find python tutorials
+            --- END HISTORY ---\\n\\n"
+        """
+        if not self.conversation_history:
+            return ""
+        
+        # Take the last N messages
+        recent_messages = self.conversation_history[-max_messages:]
+        
+        # Build the formatted history
+        history_lines = ["\\n\\n--- CONVERSATION HISTORY ---"]
+        
+        for msg in recent_messages:
+            # Determine the author display name
+            if msg.username:
+                author = msg.username
+            elif msg.agent_name:
+                author = f"Agent({msg.agent_name})"
+            else:
+                author = "System"
+            
+            # Add the formatted message
+            history_lines.append(f"{author}: {msg.content}")
+        
+        history_lines.append("--- END HISTORY ---\\n\\n")
+        
+        return "\\n".join(history_lines)
 
 
 # === BASE AGENT CLASS ===

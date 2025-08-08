@@ -16,6 +16,7 @@ from .agent import (
 from .client import AgentClient, run_agent
 from .auth import SimpleAuth
 from .router import MessageRouter
+from .context_helpers import format_conversation_history
 
 # Knowledge Graph functionality
 from .knowledge_graph import (
@@ -64,6 +65,7 @@ __all__ = [
     
     # Convenience functions
     "run_agent",
+    "format_conversation_history",
     
     # Knowledge Graph
     "KnowledgeGraphManager",
