@@ -4,7 +4,7 @@ Knowledge Graph Agent - A GatherChat agent with dependency-as-graph pattern
 """
 
 import logging
-from typing import Optional
+from typing import Optional, List, Dict
 from datetime import datetime, timezone
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
@@ -30,12 +30,12 @@ class DemoGraph(BaseModel):
     """
     # Core state
     current_status: str = "initialized"
-    messages: list[str] = Field(default_factory=list)
+    messages: List[str] = Field(default_factory=list)
     hello_count: int = 0
     
     # Example structured data
-    user_preferences: dict[str, str] = Field(default_factory=dict)
-    session_data: dict[str, str] = Field(default_factory=dict)
+    user_preferences: Dict[str, str] = Field(default_factory=dict)
+    session_data: Dict[str, str] = Field(default_factory=dict)
     
     # Agent context integration
     agent_context: Optional[AgentContext] = None
@@ -105,6 +105,7 @@ async def say_hello_world(
 pydantic_agent = Agent(
     "openai:gpt-4o",
     deps_type=DemoGraph,  # Use knowledge graph as dependency type
+    output_type=str,      # Always return strings
     tools=[say_hello_world],  # Add our example tool
     system_prompt="You are a helpful AI assistant with a knowledge graph memory. Use your tools to interact with users and remember information across conversations."
 )

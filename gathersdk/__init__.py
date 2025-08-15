@@ -16,7 +16,16 @@ from .agent import (
 from .client import AgentClient, run_agent
 from .auth import SimpleAuth
 from .router import MessageRouter
-from .context_helpers import format_conversation_history
+from .context_helpers import (
+    format_conversation_history,
+    serialize_agent_state,
+    deserialize_agent_state,
+    restore_or_create_agent_state,
+    extract_agent_state_for_persistence,
+    create_stateful_instructions,
+    get_minimal_state,
+    restore_from_minimal_state
+)
 
 # Knowledge Graph functionality
 from .knowledge_graph import (
@@ -44,7 +53,7 @@ from .visualization import (
     render_kg_snapshot
 )
 
-__version__ = "0.0.7"
+__version__ = "0.0.11"
 
 __all__ = [
     # Core classes
@@ -66,6 +75,15 @@ __all__ = [
     # Convenience functions
     "run_agent",
     "format_conversation_history",
+    
+    # Agent state persistence helpers
+    "serialize_agent_state",
+    "deserialize_agent_state", 
+    "restore_or_create_agent_state",
+    "extract_agent_state_for_persistence",
+    "create_stateful_instructions",
+    "get_minimal_state",
+    "restore_from_minimal_state",
     
     # Knowledge Graph
     "KnowledgeGraphManager",

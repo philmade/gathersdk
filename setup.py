@@ -10,7 +10,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="gathersdk",
-    version="0.0.7",
+    version="0.0.11",
     author="GatherChat Team",
     author_email="sdk@gather.is",
     description="Python SDK for building GatherChat agents",
@@ -40,7 +40,8 @@ setup(
         "aiohttp>=3.8.0",
         "pydantic>=2.0.0",
         "python-dotenv>=0.19.0",
-        "pydantic-ai>=0.0.1",
+        "pydantic-ai>=0.6.2",
+        "openai>=1.90.0,<1.96.0",  # Pin to working versions, avoid 1.96+ tool calling bug
         "click>=8.0.0",
         "cryptography>=3.4.0",
     ],

@@ -61,6 +61,10 @@ class AgentContext(BaseModel):
         default_factory=dict,
         description="Runtime knowledge graph built from function calls"
     )
+    agent_state: Optional[str] = Field(
+        default=None,
+        description="JSON string of previous agent dependency graph state for persistence"
+    )
     
     def format_conversation_history(self, max_messages: int = 10) -> str:
         """
