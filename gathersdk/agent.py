@@ -65,6 +65,10 @@ class AgentContext(BaseModel):
         default=None,
         description="JSON string of previous agent dependency graph state for persistence"
     )
+    user_api_keys: Dict[str, str] = Field(
+        default_factory=dict,
+        description="User's decrypted API keys for agent use (e.g., 'OPENAI_API_KEY', 'GOOGLE_API_KEY')"
+    )
     
     def format_conversation_history(self, max_messages: int = 10) -> str:
         """

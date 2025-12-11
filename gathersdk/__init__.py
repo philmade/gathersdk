@@ -11,20 +11,19 @@ from .agent import (
     ChatContext,
     MessageContext,
     AgentResponse,
-    AgentError
+    AgentError,
 )
 from .client import AgentClient, run_agent
 from .auth import SimpleAuth
 from .router import MessageRouter
 from .context_helpers import (
-    format_conversation_history,
     serialize_agent_state,
     deserialize_agent_state,
     restore_or_create_agent_state,
     extract_agent_state_for_persistence,
     create_stateful_instructions,
     get_minimal_state,
-    restore_from_minimal_state
+    restore_from_minimal_state,
 )
 
 # Knowledge Graph functionality
@@ -33,7 +32,7 @@ from .knowledge_graph import (
     KGEntity,
     KGRelationship,
     KGSearchResult,
-    create_kg_manager
+    create_kg_manager,
 )
 from .tools import (
     with_knowledge_graph,
@@ -41,17 +40,10 @@ from .tools import (
     with_entity_creation,
     track_search,
     track_function,
-    track_entity
+    track_entity,
 )
-from .storage import (
-    create_storage_backend,
-    DuckDBKGStorage
-)
-from .visualization import (
-    KGVisualizer,
-    create_kg_visualizer,
-    render_kg_snapshot
-)
+from .storage import create_storage_backend, DuckDBKGStorage
+from .visualization import KGVisualizer, create_kg_visualizer, render_kg_snapshot
 
 __version__ = "0.0.11"
 
@@ -61,37 +53,31 @@ __all__ = [
     "AgentClient",
     "SimpleAuth",
     "MessageRouter",
-    
     # Context models
     "AgentContext",
-    "UserContext", 
+    "UserContext",
     "ChatContext",
     "MessageContext",
-    
     # Helper classes
     "AgentResponse",
     "AgentError",
-    
     # Convenience functions
     "run_agent",
     "format_conversation_history",
-    
     # Agent state persistence helpers
     "serialize_agent_state",
-    "deserialize_agent_state", 
+    "deserialize_agent_state",
     "restore_or_create_agent_state",
     "extract_agent_state_for_persistence",
     "create_stateful_instructions",
     "get_minimal_state",
     "restore_from_minimal_state",
-    
     # Knowledge Graph
     "KnowledgeGraphManager",
     "KGEntity",
-    "KGRelationship", 
+    "KGRelationship",
     "KGSearchResult",
     "create_kg_manager",
-    
     # Decorators
     "with_knowledge_graph",
     "with_search_tracking",
@@ -99,13 +85,11 @@ __all__ = [
     "track_search",
     "track_function",
     "track_entity",
-    
     # Storage
     "create_storage_backend",
     "DuckDBKGStorage",
-    
     # Visualization
     "KGVisualizer",
     "create_kg_visualizer",
-    "render_kg_snapshot"
+    "render_kg_snapshot",
 ]
