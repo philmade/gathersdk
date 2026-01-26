@@ -237,61 +237,83 @@ class AgentRunner:
 
         # Serialize requests to the same session to prevent "stale session" errors
         async with self._get_session_lock(session_id):
-            try:
-                async with httpx.AsyncClient(timeout=60.0) as client:
-                    # Ensure session exists (create if needed)
-                    session_url = f"{self.adk_server_url}/apps/{app_name}/users/{user_id}/sessions/{session_id}"
-                    session_resp = await client.post(session_url)
-                    if session_resp.status_code not in [200, 409]:  # 409 = already exists
-                        logger.debug(f"Session creation: {session_resp.status_code}")
+            # Retry loop for handling stale session errors
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    async with httpx.AsyncClient(timeout=60.0) as client:
+                        # Get fresh session - fetch it to get latest state
+                        session_url = f"{self.adk_server_url}/apps/{app_name}/users/{user_id}/sessions/{session_id}"
 
-                    # Call ADK web server's /run endpoint
-                    response = await client.post(
-                        f"{self.adk_server_url}/run",
-                        json={
-                            "app_name": app_name,
-                            "user_id": user_id,
-                            "session_id": session_id,
-                            "new_message": {
-                                "parts": [{"text": content}],
-                                "role": "user"
-                            },
-                            "streaming": False
-                        }
-                    )
+                        # First try to create session (idempotent)
+                        session_resp = await client.post(session_url)
+                        if session_resp.status_code not in [200, 409]:  # 409 = already exists
+                            logger.debug(f"Session creation: {session_resp.status_code}")
 
-                    if response.status_code != 200:
-                        logger.error(f"ADK server error: {response.status_code} - {response.text}")
-                        return f"Error: ADK server returned {response.status_code}"
+                        # Call ADK web server's /run endpoint
+                        response = await client.post(
+                            f"{self.adk_server_url}/run",
+                            json={
+                                "app_name": app_name,
+                                "user_id": user_id,
+                                "session_id": session_id,
+                                "new_message": {
+                                    "parts": [{"text": content}],
+                                    "role": "user"
+                                },
+                                "streaming": False
+                            }
+                        )
 
-                    # Parse response - array of events
-                    events = response.json()
+                        # Check for stale session error (500 with specific message)
+                        if response.status_code == 500:
+                            error_text = response.text.lower()
+                            if "stale" in error_text or "last_update_time" in error_text:
+                                if attempt < max_retries - 1:
+                                    logger.warning(f"Stale session detected, retrying ({attempt + 1}/{max_retries})...")
+                                    await asyncio.sleep(0.5 * (attempt + 1))  # Backoff
+                                    continue
+                                else:
+                                    logger.error(f"Stale session error after {max_retries} retries")
+                                    return "Error: Session conflict. Please try again."
 
-                    # Extract text from final response event
-                    response_text = ""
-                    for event in events:
-                        # Look for content with text parts
-                        if "content" in event and event["content"]:
-                            content_obj = event["content"]
-                            if "parts" in content_obj:
-                                for part in content_obj["parts"]:
-                                    if "text" in part:
-                                        response_text += part["text"]
+                            logger.error(f"ADK server error: {response.status_code} - {response.text}")
+                            return f"Error: ADK server returned {response.status_code}"
 
-                    if response_text:
-                        logger.debug(f"@{self.agent.handle} response: {response_text[:100]}...")
-                        return response_text
+                        if response.status_code != 200:
+                            logger.error(f"ADK server error: {response.status_code} - {response.text}")
+                            return f"Error: ADK server returned {response.status_code}"
 
-                    logger.warning(f"@{self.agent.handle} produced no response from ADK")
-                    return None
+                        # Parse response - array of events
+                        events = response.json()
 
-            except httpx.ConnectError:
-                logger.error(f"Cannot connect to ADK server at {self.adk_server_url}")
-                logger.error("Make sure 'adk web' is running: adk web --port 8000")
-                return "Error: ADK server not running. Start it with: adk web"
-            except Exception as e:
-                logger.error(f"ADK invocation failed: {e}")
-                raise
+                        # Extract text from final response event
+                        response_text = ""
+                        for event in events:
+                            # Look for content with text parts
+                            if "content" in event and event["content"]:
+                                content_obj = event["content"]
+                                if "parts" in content_obj:
+                                    for part in content_obj["parts"]:
+                                        if "text" in part:
+                                            response_text += part["text"]
+
+                        if response_text:
+                            logger.debug(f"@{self.agent.handle} response: {response_text[:100]}...")
+                            return response_text
+
+                        logger.warning(f"@{self.agent.handle} produced no response from ADK")
+                        return None
+
+                except httpx.ConnectError:
+                    logger.error(f"Cannot connect to ADK server at {self.adk_server_url}")
+                    logger.error("Make sure 'adk web' is running: adk web --port 8000")
+                    return "Error: ADK server not running. Start it with: adk web"
+                except Exception as e:
+                    logger.error(f"ADK invocation failed: {e}")
+                    raise
+
+            return "Error: Failed after multiple retries"
 
 
 

@@ -24,7 +24,7 @@ from .sdk import AgencySDK, SDKConfig, AgentConfig
 from .discovery import discover_agents, DiscoveredAgent
 from .client import TinodeClient, Message
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __all__ = [
     "AgencySDK",
     "SDKConfig",

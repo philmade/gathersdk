@@ -2,6 +2,7 @@
 Gather SDK CLI - Connect Google ADK agents to Gather.is workspaces
 
 Commands:
+    gathersdk init       Create a new agent project with all boilerplate
     gathersdk serve      Start the SDK bridge (requires 'adk web' running)
     gathersdk discover   List agents found in directory
 
@@ -10,6 +11,7 @@ Run 'adk web' in a separate terminal for full ADK debugging at http://localhost:
 
 import asyncio
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -17,6 +19,50 @@ import click
 
 from .sdk import AgencySDK
 from .discovery import discover_agents
+
+
+# Template for the sample agent
+AGENT_TEMPLATE = '''from google.adk import Agent
+
+root_agent = Agent(
+    name="{name}",
+    model="gemini-2.5-flash",
+    description="A helpful AI assistant",
+    instruction="""You are a helpful AI assistant called {name}.
+
+Your personality:
+- Friendly and conversational
+- Clear and concise in your responses
+- Helpful and proactive
+
+Keep responses focused and useful."""
+)
+'''
+
+# Template for __init__.py
+INIT_TEMPLATE = '''from .agent import root_agent
+'''
+
+# Template for .env.example
+ENV_TEMPLATE = '''# Get your API key from: https://aistudio.google.com/apikey
+GOOGLE_API_KEY=your_api_key_here
+'''
+
+# Template for gather.config.json placeholder
+CONFIG_TEMPLATE = '''{
+  "_instructions": "Replace this file with your gather.config.json from app.gather.is",
+  "_steps": [
+    "1. Go to https://app.gather.is",
+    "2. Create or open a workspace",
+    "3. Click the workspace dropdown (top-left)",
+    "4. Select 'SDK Settings'",
+    "5. Click 'Download gather.config.json'",
+    "6. Replace this file with the downloaded one"
+  ],
+  "pocketnode_url": "https://app.gather.is",
+  "workspace": "REPLACE_ME"
+}
+'''
 
 
 @click.group()
@@ -29,6 +75,106 @@ def cli(verbose: bool):
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%H:%M:%S"
     )
+
+
+@cli.command()
+@click.option(
+    "--name", "-n",
+    prompt="Agent name",
+    help="Name for your first agent (lowercase, underscores ok)"
+)
+@click.option(
+    "--dir", "-d",
+    default=".",
+    help="Directory to create project in"
+)
+def init(name: str, dir: str):
+    """
+    Create a new Gather.is agent project with all the boilerplate.
+
+    This sets up everything you need to get started:
+    - Agent folder with working sample code
+    - Environment file template
+    - Placeholder config (replace with your download from app.gather.is)
+
+    \b
+    After running this:
+    1. Replace gather.config.json with your download from app.gather.is
+    2. Copy .env.example to .env and add your Google API key
+    3. Run: adk web (in one terminal)
+    4. Run: gathersdk serve (in another terminal)
+    """
+    # Normalize agent name
+    agent_name = name.lower().replace("-", "_").replace(" ", "_")
+
+    # Validate name
+    if not agent_name.isidentifier():
+        click.echo(click.style(f"Invalid agent name: {name}", fg="red"))
+        click.echo("Use lowercase letters, numbers, and underscores only.")
+        sys.exit(1)
+
+    project_dir = Path(dir).resolve()
+    agent_dir = project_dir / agent_name
+
+    # Check if agent already exists
+    if agent_dir.exists():
+        click.echo(click.style(f"Agent folder already exists: {agent_dir}", fg="red"))
+        sys.exit(1)
+
+    click.echo(click.style("\n🚀 Creating Gather.is agent project...\n", fg="cyan"))
+
+    # Create agent folder
+    agent_dir.mkdir(parents=True)
+    click.echo(f"  Created {agent_name}/")
+
+    # Create agent.py
+    (agent_dir / "agent.py").write_text(AGENT_TEMPLATE.format(name=agent_name))
+    click.echo(f"  Created {agent_name}/agent.py")
+
+    # Create __init__.py
+    (agent_dir / "__init__.py").write_text(INIT_TEMPLATE)
+    click.echo(f"  Created {agent_name}/__init__.py")
+
+    # Create .env.example (in project root)
+    env_file = project_dir / ".env.example"
+    if not env_file.exists():
+        env_file.write_text(ENV_TEMPLATE)
+        click.echo("  Created .env.example")
+
+    # Create gather.config.json placeholder (in project root)
+    config_file = project_dir / "gather.config.json"
+    if not config_file.exists():
+        config_file.write_text(CONFIG_TEMPLATE)
+        click.echo("  Created gather.config.json (placeholder)")
+
+    # Print success and next steps
+    click.echo(click.style("\n✅ Project created successfully!\n", fg="green"))
+
+    click.echo("Project structure:")
+    click.echo(f"  {project_dir.name}/")
+    click.echo(f"  ├── gather.config.json  ← Replace with download from app.gather.is")
+    click.echo(f"  ├── .env.example        ← Copy to .env, add your Google API key")
+    click.echo(f"  └── {agent_name}/")
+    click.echo(f"      ├── __init__.py")
+    click.echo(f"      └── agent.py        ← Your agent code")
+
+    click.echo(click.style("\n📋 Next steps:\n", fg="yellow"))
+    click.echo("  1. Get your config from Gather.is:")
+    click.echo(click.style("     → Go to app.gather.is → Workspace dropdown → SDK Settings", fg="cyan"))
+    click.echo("     → Download and replace gather.config.json")
+    click.echo()
+    click.echo("  2. Set up your API key:")
+    click.echo(click.style("     cp .env.example .env", fg="cyan"))
+    click.echo("     → Edit .env and add your Google API key")
+    click.echo("     → Get a key at: https://aistudio.google.com/apikey")
+    click.echo()
+    click.echo("  3. Start the servers (two terminals):")
+    click.echo(click.style("     Terminal 1: source .env && adk web", fg="cyan"))
+    click.echo(click.style("     Terminal 2: source .env && gathersdk serve", fg="cyan"))
+    click.echo()
+    click.echo(f"  4. Chat with your agent at app.gather.is:")
+    click.echo(click.style(f"     @{agent_name} hello!", fg="cyan"))
+    click.echo()
 
 
 @cli.command()
