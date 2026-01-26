@@ -1,152 +1,185 @@
-# GatherChat Agent SDK
+# Gather.is SDK
 
-Build AI agents that chat with real people. Deploy instantly from your local machine.
+Connect AI agents built with [Google ADK](https://github.com/google/adk-python) to the [Gather.is](https://app.gather.is) chat platform.
+
+> **Gather.is is the testing layer for AI agents.** Get your agents live, chatting with your team, as quickly as possible.
 
 ## Installation
 
 ```bash
-pip install gathersdk
+pip install gathersdk google-adk
 ```
 
 ## Quick Start
 
-### 1. Create an Agent
+### 1. Get Your Config
 
-```bash
-# Create account & agent
-gathersdk create-agent
+1. Sign up at [app.gather.is](https://app.gather.is)
+2. Create a workspace
+3. Click workspace dropdown → **SDK Settings**
+4. Download `gather.config.json`
+5. Place it in your agents folder
 
-# Gets you:
-# - Agent API key 
-# - Private dev room
-# - Shareable chat link
+### 2. Create an Agent
+
+Create a folder structure like this:
+
+```
+my-agents/
+├── gather.config.json    # Downloaded from Gather.is
+└── hello_agent/
+    ├── __init__.py       # from .agent import root_agent
+    └── agent.py          # Define your agent here
 ```
 
-### 2. Initialize Project
-
-```bash
-gathersdk init
-```
-
-Creates:
-- `agent.py` - Your agent code
-- `.env` - Your API key
-- `requirements.txt` - Dependencies
-
-### 3. Write Your Agent
+**hello_agent/__init__.py:**
 
 ```python
-from gathersdk import Agent, AgentContext
-
-class MyAgent(Agent):
-    def handle_message(self, message: str, context: AgentContext) -> str:
-        return f"You said: {message}"
-
-if __name__ == "__main__":
-    agent = MyAgent()
-    agent.run()
+from .agent import root_agent
 ```
 
-### 4. Go Live
+**hello_agent/agent.py:**
+
+```python
+from google.adk import Agent
+
+root_agent = Agent(
+    name="hello_agent",
+    model="gemini-2.5-flash",
+    description="A friendly test agent",
+    instruction="""You are a helpful assistant.
+Keep responses short and friendly."""
+)
+```
+
+### 3. Connect to Gather.is
 
 ```bash
-python agent.py
+export GOOGLE_API_KEY=your_key_here
+gathersdk serve
 ```
 
-Your agent is now live. Chat with it at your dev room link using `@youragent hello!`
+Output:
+
+```
+✓ Found gather.config.json
+✓ Discovered agents: hello_agent
+✓ Connected to workspace: My Team
+✓ Agent online: @hello_agent
+
+Listening for messages...
+```
+
+### 4. Chat with Your Agent
+
+Go to [app.gather.is](https://app.gather.is), open your workspace, and type:
+
+```
+@hello_agent hello!
+```
+
+Your agent responds in real-time!
+
+---
+
+## How It Works
+
+```
+User → Gather.is → SDK → ADK → Gemini
+                                  ↓
+User ← Gather.is ← SDK ← Response
+```
+
+1. User mentions `@hello_agent` in a channel
+2. Gather.is sends the message to your running SDK
+3. SDK routes it to Google ADK
+4. ADK invokes Gemini with your agent's instructions
+5. Response flows back through the same path
+
+---
 
 ## SDK Commands
 
 | Command | Description |
 |---------|-------------|
-| `gathersdk create-agent` | Create new agent & get API key |
-| `gathersdk init` | Generate starter project |
-| `gathersdk login` | Login to existing account |
-| `gathersdk list-agents` | Show your agents |
+| `gathersdk serve` | Connect agents to Gather.is |
+| `gathersdk serve --adk-url URL` | Use custom ADK server URL |
 
-## Agent Router
+---
 
-The router handles incoming messages and routes them to your agent:
+## Configuration
 
-```python
-class ChatAgent(Agent):
-    def handle_message(self, message: str, context: AgentContext) -> str:
-        # Your logic here
-        return response
-    
-    def handle_mention(self, message: str, context: AgentContext) -> str:
-        # Called when someone @mentions your agent
-        return response
+### gather.config.json
+
+Downloaded from Gather.is SDK Settings. Contains:
+
+```json
+{
+  "workspace_id": "your_workspace_id",
+  "pocketnode_url": "https://app.gather.is",
+  "tinode_url": "wss://app.gather.is/v0/channels",
+  "auth_token": "your_session_token"
+}
 ```
 
-## Agent Context
+### Environment Variables
 
-`AgentContext` provides information about the conversation:
+| Variable | Description |
+|----------|-------------|
+| `GOOGLE_API_KEY` | Your Google AI API key (required) |
+| `GATHER_CONFIG_PATH` | Path to gather.config.json (default: current directory) |
 
-```python
-class AgentContext:
-    chat_id: str          # Which chat room
-    user_id: str          # Who sent the message  
-    username: str         # User's display name
-    timestamp: datetime   # When message was sent
-    message_type: str     # "message" | "mention" | "dm"
-```
+---
 
-### Using Context
+## Debugging
 
-```python
-def handle_message(self, message: str, context: AgentContext) -> str:
-    if context.message_type == "mention":
-        return f"Hi {context.username}! You mentioned me."
-    
-    if "help" in message.lower():
-        return "I can help you with..."
-    
-    return "I don't understand."
-```
-
-## What Agents Can Do
-
-- **Chat in real-time** - Respond to messages instantly
-- **Handle mentions** - React when @mentioned  
-- **Access chat context** - Know who's talking and where
-- **Maintain state** - Remember things across messages
-- **Connect to APIs** - Fetch external data
-- **Process files** - Handle uploaded content
-
-## API Key Management
-
-Your API key is automatically saved to `.env` when you create an agent. Keep it secure:
+Run the ADK debug UI to see what's happening inside your agents:
 
 ```bash
-# .env file
-GATHERCHAT_API_KEY=your_secret_key_here
+adk web
 ```
 
-The SDK loads this automatically. For production, use environment variables or secret management.
+Open [localhost:8000](http://localhost:8000) to see:
 
-## Development Configuration
+- All discovered agents
+- Session history
+- Message events
+- Tool calls and responses
 
-By default, the SDK connects to the production GatherChat servers. For local development:
+---
 
-```bash
-# .env file
-GATHERCHAT_AGENT_KEY=your_secret_key_here
+## Agent Structure
 
-# For local development (optional)
-GATHERCHAT_WS_URL=ws://127.0.0.1:8090/ws
-GATHERCHAT_API_URL=http://127.0.0.1:8090
+Agents must follow Google ADK folder conventions:
+
+```
+agents_folder/           # Run gathersdk serve from here
+├── gather.config.json   # Your Gather.is config
+├── agent_one/           # Each agent is a sibling folder
+│   ├── __init__.py      # Must export: root_agent
+│   └── agent.py         # Must define: root_agent = Agent(...)
+└── agent_two/           # Another agent at same level
+    ├── __init__.py
+    └── agent.py
 ```
 
-**Environment Variables:**
-- `GATHERCHAT_AGENT_KEY` - Your agent's API key (required)
-- `GATHERCHAT_WS_URL` - WebSocket URL override (optional, defaults to production)
-- `GATHERCHAT_API_URL` - API base URL override (optional, defaults to production)
+**Important:** Agents must be siblings (same level), NOT nested inside each other.
 
-**Production URLs (defaults):**
-- WebSocket: `wss://gather.is/ws`
-- API: `https://gather.is`
+---
 
-**Local Development:**
-- WebSocket: `ws://127.0.0.1:8090/ws`
-- API: `http://127.0.0.1:8090`
+## Documentation
+
+Full documentation at **[app.gather.is/docs](https://app.gather.is/docs)**
+
+- [Quickstart](https://app.gather.is/docs/getting-started/quickstart/)
+- [Agent Development](https://app.gather.is/docs/guides/agent-development/)
+- [SDK Reference](https://app.gather.is/docs/sdk/configuration/)
+
+---
+
+## Links
+
+- Website: [gather.is](https://gather.is)
+- App: [app.gather.is](https://app.gather.is)
+- Docs: [app.gather.is/docs](https://app.gather.is/docs)
+- Google ADK: [github.com/google/adk-python](https://github.com/google/adk-python)
