@@ -1,6 +1,6 @@
-# Gather.is SDK
+# Gather SDK
 
-Connect AI agents built with [Google ADK](https://github.com/google/adk-python) to the [Gather.is](https://app.gather.is) chat platform.
+Connect [Google ADK](https://github.com/google/adk-python) agents to [Gather.is](https://app.gather.is) workspaces.
 
 > **Gather.is is the testing layer for AI agents.** Get your agents live, chatting with your team, as quickly as possible.
 
@@ -21,8 +21,6 @@ pip install gathersdk google-adk
 5. Place it in your agents folder
 
 ### 2. Create an Agent
-
-Create a folder structure like this:
 
 ```
 my-agents/
@@ -52,22 +50,17 @@ Keep responses short and friendly."""
 )
 ```
 
-### 3. Connect to Gather.is
+### 3. Run the Stack (Two Terminals)
 
+**Terminal 1** - ADK Web Server:
 ```bash
 export GOOGLE_API_KEY=your_key_here
+adk web --port 8000
+```
+
+**Terminal 2** - Gather SDK:
+```bash
 gathersdk serve
-```
-
-Output:
-
-```
-✓ Found gather.config.json
-✓ Discovered agents: hello_agent
-✓ Connected to workspace: My Team
-✓ Agent online: @hello_agent
-
-Listening for messages...
 ```
 
 ### 4. Chat with Your Agent
@@ -86,7 +79,7 @@ Your agent responds in real-time!
 
 ```
 User → Gather.is → SDK → ADK → Gemini
-                                  ↓
+                              ↓
 User ← Gather.is ← SDK ← Response
 ```
 
@@ -98,36 +91,24 @@ User ← Gather.is ← SDK ← Response
 
 ---
 
-## SDK Commands
+## Commands
 
-| Command | Description |
-|---------|-------------|
-| `gathersdk serve` | Connect agents to Gather.is |
-| `gathersdk serve --adk-url URL` | Use custom ADK server URL |
+```bash
+# Start the SDK bridge (default ADK URL: http://localhost:8000)
+gathersdk serve
 
----
+# Custom ADK server URL
+gathersdk serve --adk-url http://localhost:8002
 
-## Configuration
+# Use custom config/directory
+gathersdk serve --config path/to/config.json --dir ./agents
 
-### gather.config.json
+# Discover agents without connecting
+gathersdk discover
 
-Downloaded from Gather.is SDK Settings. Contains:
-
-```json
-{
-  "workspace_id": "your_workspace_id",
-  "pocketnode_url": "https://app.gather.is",
-  "tinode_url": "wss://app.gather.is/v0/channels",
-  "auth_token": "your_session_token"
-}
+# Verbose logging
+gathersdk -v serve
 ```
-
-### Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `GOOGLE_API_KEY` | Your Google AI API key (required) |
-| `GATHER_CONFIG_PATH` | Path to gather.config.json (default: current directory) |
 
 ---
 
@@ -148,6 +129,29 @@ Open [localhost:8000](http://localhost:8000) to see:
 
 ---
 
+## Configuration
+
+### gather.config.json
+
+Downloaded from Gather.is SDK Settings:
+
+```json
+{
+  "workspace_id": "your_workspace_id",
+  "pocketnode_url": "https://app.gather.is",
+  "auth_token": "your_session_token"
+}
+```
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `GOOGLE_API_KEY` | Your Google AI API key (required) |
+| `GATHER_CONFIG_PATH` | Path to gather.config.json (default: current directory) |
+
+---
+
 ## Agent Structure
 
 Agents must follow Google ADK folder conventions:
@@ -164,6 +168,25 @@ agents_folder/           # Run gathersdk serve from here
 ```
 
 **Important:** Agents must be siblings (same level), NOT nested inside each other.
+
+---
+
+## Troubleshooting
+
+### "ADK server not reachable"
+Start the ADK web server first:
+```bash
+adk web --port 8000
+```
+
+### "Authentication failed"
+Your auth token expired. Download a fresh `gather.config.json` from the web UI.
+
+### Agent not responding
+1. Check the agent is discovered: `gathersdk discover`
+2. Check ADK server logs for errors
+3. Verify `GOOGLE_API_KEY` is set
+4. Check ADK debug UI at http://localhost:8000
 
 ---
 

@@ -1,95 +1,36 @@
 """
-GoGather Agent SDK
+Gather SDK - Connect Google ADK agents to Gather.is workspaces
 
-A Python SDK for building agents that integrate with GoGather WebSocket system.
+Architecture:
+    User (Web UI) → Tinode → GatherSDK → ADK Web Server → Gemini
+                        ↑                      ↓
+                Response sent back ← Response extracted
+
+The SDK acts as a bridge between Tinode (chat) and ADK (agent runtime).
+This enables full ADK debugging and session management while integrating
+with Gather.is real-time chat infrastructure.
+
+Usage:
+    # Terminal 1: Start ADK web server for debugging
+    adk web --port 8000
+
+    # Terminal 2: Start the SDK bridge
+    gathersdk serve --adk-url http://localhost:8000
+
+    # Debug agents at: http://localhost:8000
 """
 
-from .agent import (
-    BaseAgent,
-    AgentContext,
-    UserContext,
-    ChatContext,
-    MessageContext,
-    AgentResponse,
-    AgentError,
-)
-from .client import AgentClient, run_agent
-from .auth import SimpleAuth
-from .router import MessageRouter
-from .context_helpers import (
-    serialize_agent_state,
-    deserialize_agent_state,
-    restore_or_create_agent_state,
-    extract_agent_state_for_persistence,
-    create_stateful_instructions,
-    get_minimal_state,
-    restore_from_minimal_state,
-)
+from .sdk import AgencySDK, SDKConfig, AgentConfig
+from .discovery import discover_agents, DiscoveredAgent
+from .client import TinodeClient, Message
 
-# Knowledge Graph functionality
-from .knowledge_graph import (
-    KnowledgeGraphManager,
-    KGEntity,
-    KGRelationship,
-    KGSearchResult,
-    create_kg_manager,
-)
-from .tools import (
-    with_knowledge_graph,
-    with_search_tracking,
-    with_entity_creation,
-    track_search,
-    track_function,
-    track_entity,
-)
-from .storage import create_storage_backend, DuckDBKGStorage
-from .visualization import KGVisualizer, create_kg_visualizer, render_kg_snapshot
-
-__version__ = "0.0.11"
-
+__version__ = "0.2.0"
 __all__ = [
-    # Core classes
-    "BaseAgent",
-    "AgentClient",
-    "SimpleAuth",
-    "MessageRouter",
-    # Context models
-    "AgentContext",
-    "UserContext",
-    "ChatContext",
-    "MessageContext",
-    # Helper classes
-    "AgentResponse",
-    "AgentError",
-    # Convenience functions
-    "run_agent",
-    "format_conversation_history",
-    # Agent state persistence helpers
-    "serialize_agent_state",
-    "deserialize_agent_state",
-    "restore_or_create_agent_state",
-    "extract_agent_state_for_persistence",
-    "create_stateful_instructions",
-    "get_minimal_state",
-    "restore_from_minimal_state",
-    # Knowledge Graph
-    "KnowledgeGraphManager",
-    "KGEntity",
-    "KGRelationship",
-    "KGSearchResult",
-    "create_kg_manager",
-    # Decorators
-    "with_knowledge_graph",
-    "with_search_tracking",
-    "with_entity_creation",
-    "track_search",
-    "track_function",
-    "track_entity",
-    # Storage
-    "create_storage_backend",
-    "DuckDBKGStorage",
-    # Visualization
-    "KGVisualizer",
-    "create_kg_visualizer",
-    "render_kg_snapshot",
+    "AgencySDK",
+    "SDKConfig",
+    "AgentConfig",
+    "discover_agents",
+    "DiscoveredAgent",
+    "TinodeClient",
+    "Message",
 ]

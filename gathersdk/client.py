@@ -1,478 +1,657 @@
 """
-GatherChat Agent Client - WebSocket connection and message handling
+Tinode WebSocket client for Agency SDK
+
+Handles the low-level WebSocket communication with Tinode:
+    - Authentication (basic auth with bot credentials)
+    - Topic subscription (workspace channels, DMs)
+    - Message receiving and sending
+    - Deduplication of messages (handles reconnect history)
+
+Each agent bot gets its own TinodeClient instance with unique credentials.
 """
 
-import json
 import asyncio
+import base64
+import json
 import logging
-import uuid
-from typing import Optional, Dict, Any
-from datetime import datetime, timezone
-import aiohttp
+from typing import Callable, Optional, Any
+from dataclasses import dataclass, field
 
-from .auth import SimpleAuth
-from .agent import BaseAgent, AgentContext, UserContext, ChatContext, MessageContext
+import websockets
+from websockets.client import WebSocketClientProtocol
 
 logger = logging.getLogger(__name__)
 
 
-def parse_datetime(date_str: Optional[str]) -> datetime:
-    """
-    Parse datetime string from Go server, handling various formats.
-    
-    Handles:
-    - ISO format with 'Z' suffix (e.g., '2024-01-01T12:00:00Z')
-    - ISO format without 'Z' (e.g., '2024-01-01T12:00:00')
-    - Go zero time value ('0001-01-01T00:00:00Z')
-    - None or empty strings
-    """
-    if not date_str:
-        return datetime.now(timezone.utc)
-    
-    # Handle Go's zero time value
-    if date_str.startswith('0001-01-01'):
-        return datetime.now(timezone.utc)
-    
-    # Remove 'Z' suffix if present and add UTC timezone
-    if date_str.endswith('Z'):
-        date_str = date_str[:-1] + '+00:00'
-    
-    try:
-        return datetime.fromisoformat(date_str)
-    except ValueError:
-        logger.warning(f"Could not parse datetime: {date_str}, using current time")
-        return datetime.now(timezone.utc)
+@dataclass
+class Message:
+    """Represents a chat message from Tinode"""
+    topic: str
+    from_user: str
+    content: str
+    seq: int
+    mentions: list[str] = field(default_factory=list)
+    is_dm: bool = False
+
+    @classmethod
+    def from_data(cls, topic: str, data: dict) -> "Message":
+        """Parse message from Tinode {data} packet"""
+        content = data.get("content", "")
+
+        # Extract mentions from message format
+        # Tinode uses fmt array with mention references
+        mentions = []
+        if "fmt" in data:
+            for fmt in data.get("fmt", []):
+                if fmt.get("tp") == "MN":  # Mention type
+                    ref = fmt.get("key")
+                    if ref:
+                        mentions.append(ref)
+
+        # Check if this is a P2P (DM) topic
+        # DMs can be either:
+        # - p2p... topics (traditional P2P)
+        # - usr... topics (when subscribed via user ID)
+        is_dm = topic.startswith("p2p") or topic.startswith("usr")
+
+        return cls(
+            topic=topic,
+            from_user=data.get("from", ""),
+            content=content if isinstance(content, str) else str(content),
+            seq=data.get("seq", 0),
+            mentions=mentions,
+            is_dm=is_dm
+        )
 
 
-class AgentClient:
+class TinodeClient:
     """
-    WebSocket client for GatherChat agents.
-    
-    Handles:
-    - Simple API key authentication
-    - WebSocket connection management
-    - Message routing to agent
-    - Automatic reconnection
-    - Heartbeat/keepalive
+    WebSocket client for connecting to Tinode as a bot user.
+
+    Each bot agent gets its own client instance with its own credentials.
     """
-    
+
     def __init__(
         self,
-        agent: BaseAgent,
-        agent_key: str = None,
-        api_url: str = None
+        server_url: str,
+        login: str,
+        password: str,
+        api_key: str = "AQEAAAABAAD_rAp4DJh05a1HAwFT3A6K"
     ):
-        """
-        Initialize agent client.
-        
-        Args:
-            agent: Your BaseAgent implementation
-            agent_key: Agent API key (default: from GATHERCHAT_AGENT_KEY env)
-            api_url: API base URL (default: from GATHERCHAT_API_URL env)
-            heartbeat_interval: Seconds between heartbeats (default: 30)
-        """
-        self.agent = agent
-        # Note: Heartbeat removed - WebSocket has built-in ping/pong
-        
-        # Initialize authentication
-        if agent_key and api_url:
-            self.auth = SimpleAuth(agent_key, api_url)
-        else:
-            # Load from environment
-            self.auth = SimpleAuth.from_env()
-        
-        self.websocket: Optional[aiohttp.ClientWebSocketResponse] = None
-        self.session: Optional[aiohttp.ClientSession] = None
-        self.running = False
-        self._reconnect_delay = 5
-        self.authenticated_agent_name: Optional[str] = None  # Set during authentication (display name)
-        self.authenticated_username: Optional[str] = None    # Set during authentication (username for @mentions)
-        # Note: Heartbeat task removed
-    
+        self.server_url = server_url
+        self.login = login
+        self.password = password
+        self.api_key = api_key
+
+        self.ws: Optional[WebSocketClientProtocol] = None
+        self.user_id: Optional[str] = None
+        self.msg_id = 0
+
+        # Callbacks
+        self.on_message: Optional[Callable[[Message], None]] = None
+        self.on_connected: Optional[Callable[[], None]] = None
+        self.on_disconnected: Optional[Callable[[], None]] = None
+
+        # Subscribed topics
+        self.subscriptions: set[str] = set()
+
+        # Pending requests (for request-response pattern)
+        self._pending: dict[str, asyncio.Future] = {}
+
+        # Track processed messages to avoid duplicates
+        self._processed_messages: set[str] = set()
+
+    def _next_id(self) -> str:
+        """Generate next message ID"""
+        self.msg_id += 1
+        return str(self.msg_id)
+
     async def connect(self) -> None:
-        """Connect to GatherChat WebSocket with agent authentication"""
-        try:
-            # Create WebSocket session
-            if not self.session:
-                self.session = aiohttp.ClientSession()
-            
-            # Get WebSocket URL from server config
-            ws_url = await self.auth.get_ws_url()
-            logger.info(f"Connecting to WebSocket...")
-            
-            headers = self.auth.get_auth_headers()
-            self.websocket = await self.session.ws_connect(
-                ws_url,
-                headers=headers
-            )
-            
-            logger.info("WebSocket connected, authenticating...")
-            
-            # Send authentication event (GoGather format - no welcome message)
-            auth_message = {
-                "event": "authenticate_with_api_key",
-                "data": {
-                    "api_key": self.auth.agent_key
+        """Connect to Tinode server"""
+        # Add API key to URL for authentication
+        url = self.server_url
+        if "?" in url:
+            url = f"{url}&apikey={self.api_key}"
+        else:
+            url = f"{url}?apikey={self.api_key}"
+
+        logger.info(f"Connecting to {self.server_url}")
+        self.ws = await websockets.connect(url)
+
+        # Send hello
+        await self._hello()
+
+        # Login
+        await self._login()
+
+        if self.on_connected:
+            self.on_connected()
+
+        logger.info(f"Connected as {self.user_id}")
+
+    async def _hello(self) -> dict:
+        """Send hello handshake"""
+        msg_id = self._next_id()
+        await self._send({
+            "hi": {
+                "id": msg_id,
+                "ver": "0.22",
+                "ua": "AgencySDK/0.1.0",
+                "lang": "en"
+            }
+        })
+        return await self._wait_for_ctrl(msg_id)
+
+    async def _login(self) -> dict:
+        """Authenticate with basic auth"""
+        msg_id = self._next_id()
+        # Tinode expects base64-encoded secret for basic auth
+        secret = f"{self.login}:{self.password}"
+        secret_b64 = base64.b64encode(secret.encode()).decode()
+
+        await self._send({
+            "login": {
+                "id": msg_id,
+                "scheme": "basic",
+                "secret": secret_b64
+            }
+        })
+
+        result = await self._wait_for_ctrl(msg_id)
+        self.user_id = result.get("params", {}).get("user")
+        return result
+
+    async def subscribe(self, topic: str, get_recent: bool = True) -> dict:
+        """Subscribe to a topic
+
+        Args:
+            topic: The topic to subscribe to
+            get_recent: If True, request recent messages (useful for P2P topics)
+        """
+        msg_id = self._next_id()
+
+        # For P2P topics (DMs), request recent messages to catch up on any missed messages
+        get_what = "desc sub data"
+        if topic.startswith("p2p") and get_recent:
+            # Request last 10 messages for DMs to catch any we missed
+            get_params = {
+                "what": "desc sub data",
+                "data": {"limit": 10}
+            }
+        else:
+            get_params = {"what": get_what}
+
+        await self._send({
+            "sub": {
+                "id": msg_id,
+                "topic": topic,
+                "get": get_params
+            }
+        })
+
+        result = await self._wait_for_ctrl(msg_id)
+        self.subscriptions.add(topic)
+        logger.info(f"Subscribed to {topic}")
+        return result
+
+    async def subscribe_to_me(self) -> list[str]:
+        """
+        Subscribe to 'me' topic to get list of subscriptions,
+        then subscribe to all those topics to receive messages.
+        Returns list of topics subscribed to.
+        """
+        # Collect topics from meta messages
+        self._pending_subs = []
+
+        msg_id = self._next_id()
+        await self._send({
+            "sub": {
+                "id": msg_id,
+                "topic": "me",
+                "get": {
+                    "what": "sub"
                 }
             }
-            
-            await self.websocket.send_json(auth_message)
-            
-            # Wait for auth confirmation
-            auth_response = await self.websocket.receive_json()
-            
-            # GoGather auth response format: {"event": "authSuccess", "data": {"user_id": "...", "username": "...", "name": "..."}}
-            if auth_response.get("event") == "authSuccess":
-                data = auth_response.get("data", {})
-                # Get the REAL agent name from server (prefer display name over username)
-                self.authenticated_agent_name = data.get('name') or data.get('username', 'Unknown')
-                self.authenticated_username = data.get('username', 'Unknown')
-                logger.info(f"✅ Authenticated as agent: {self.authenticated_agent_name} (@{self.authenticated_username})")
-                
-                # Initialize the agent
-                await self.agent.initialize()
-                
-            else:
-                error_msg = auth_response.get("message", "Authentication failed")
-                raise Exception(f"Authentication failed: {error_msg}")
-                
+        })
+
+        await self._wait_for_ctrl(msg_id)
+
+        # Receive additional messages (meta with subscriptions list)
+        # Keep receiving until we get a meta message with subs
+        for _ in range(10):  # Max 10 iterations
+            try:
+                raw = await asyncio.wait_for(self.ws.recv(), timeout=0.5)
+                await self._handle_message(raw)
+                if self._pending_subs:
+                    break  # Got subscriptions
+            except asyncio.TimeoutError:
+                break
+
+        # Now subscribe to each topic we're a member of
+        topics = self._pending_subs.copy()
+        self._pending_subs = []
+
+        logger.info(f"Found {len(topics)} topic(s) to subscribe to")
+
+        for topic in topics:
+            if topic.startswith("grp") or topic.startswith("p2p"):
+                try:
+                    await self.subscribe(topic)
+                except Exception as e:
+                    logger.warning(f"Failed to subscribe to {topic}: {e}")
+
+        return topics
+
+    async def discover_and_subscribe_channels(self, workspace_id: str) -> list[str]:
+        """
+        Discover channels in a workspace and subscribe to them.
+
+        Channels are group topics with public.type = "channel" and
+        public.parent = workspace_id.
+
+        Returns list of channel topic IDs subscribed to.
+        """
+        channels = []
+
+        # Subscribe to workspace to get its subscriber list (which includes channels)
+        msg_id = self._next_id()
+        await self._send({
+            "sub": {
+                "id": msg_id,
+                "topic": workspace_id,
+                "get": {
+                    "what": "sub desc"
+                }
+            }
+        })
+
+        try:
+            await self._wait_for_ctrl(msg_id)
         except Exception as e:
-            logger.error(f"Connection failed: {e}")
-            raise
-    
-    # Heartbeat functionality removed - WebSocket has built-in ping/pong
-    
-    async def disconnect(self) -> None:
-        """Disconnect from WebSocket and cleanup"""
-        self.running = False
-        
-        # Note: No heartbeat to stop
-        
-        # Cleanup agent
-        await self.agent.cleanup()
-        
-        # Close WebSocket
-        if self.websocket and not self.websocket.closed:
-            await self.websocket.close()
-        
-        # Close session
-        if self.session:
-            await self.session.close()
-        
-        logger.info("Disconnected from GatherChat")
-    
-    async def _handle_message(self, message: Dict[str, Any]) -> None:
+            logger.warning(f"Failed to subscribe to workspace: {e}")
+            return channels
+
+        # Now query for channel topics using fnd
+        # Search for topics tagged with parent:<workspace_id>
+        fnd_msg_id = self._next_id()
+        await self._send({
+            "sub": {
+                "id": fnd_msg_id,
+                "topic": "fnd"
+            }
+        })
+
+        try:
+            await self._wait_for_ctrl(fnd_msg_id)
+        except Exception as e:
+            logger.debug(f"fnd subscribe: {e}")
+
+        # Set search query
+        search_query = f"parent:{workspace_id}"
+        set_msg_id = self._next_id()
+        await self._send({
+            "set": {
+                "id": set_msg_id,
+                "topic": "fnd",
+                "desc": {
+                    "public": search_query
+                }
+            }
+        })
+
+        try:
+            await self._wait_for_ctrl(set_msg_id)
+        except Exception as e:
+            logger.debug(f"fnd set: {e}")
+
+        # Get search results
+        self._fnd_results = []
+        get_msg_id = self._next_id()
+        await self._send({
+            "get": {
+                "id": get_msg_id,
+                "topic": "fnd",
+                "what": "sub"
+            }
+        })
+
+        # Collect results
+        for _ in range(10):
+            try:
+                raw = await asyncio.wait_for(self.ws.recv(), timeout=0.5)
+                await self._handle_message(raw)
+            except asyncio.TimeoutError:
+                break
+
+        channels = self._fnd_results.copy() if hasattr(self, '_fnd_results') else []
+        self._fnd_results = []
+
+        logger.info(f"Found {len(channels)} channel(s) in workspace")
+
+        # Subscribe to each channel
+        for channel in channels:
+            try:
+                await self.subscribe(channel)
+                logger.info(f"Subscribed to channel {channel}")
+            except Exception as e:
+                logger.warning(f"Failed to subscribe to channel {channel}: {e}")
+
+        # Leave fnd topic
+        leave_msg_id = self._next_id()
+        await self._send({
+            "leave": {
+                "id": leave_msg_id,
+                "topic": "fnd"
+            }
+        })
+
+        return channels
+
+    async def send_agent_ready(self, workspace_id: str, handle: str, name: str) -> None:
+        """
+        Send agent:ready event to notify the system this agent is online.
+
+        PocketNode's bridge will process this event and ensure the agent
+        is properly set up in the workspace.
+        """
+        event = {
+            "type": "agent:ready",
+            "handle": handle,
+            "name": name,
+            "workspace": workspace_id,
+            "bot_uid": self.user_id
+        }
+
+        # Publish to workspace topic
+        await self.publish(workspace_id, json.dumps(event))
+        logger.info(f"Sent agent:ready event for @{handle}")
+
+    async def update_profile(self, name: str, handle: str) -> None:
+        """
+        Update bot's public profile with name and handle.
+        """
+        msg_id = self._next_id()
+        await self._send({
+            "set": {
+                "id": msg_id,
+                "topic": "me",
+                "desc": {
+                    "public": {
+                        "fn": name,
+                        "bot": True,
+                        "handle": handle
+                    }
+                }
+            }
+        })
+
+        try:
+            await self._wait_for_ctrl(msg_id)
+            logger.info(f"Updated profile: name={name}, handle={handle}")
+        except Exception as e:
+            logger.warning(f"Failed to update profile: {e}")
+
+    async def publish(self, topic: str, content: str, wait_for_ack: bool = False) -> dict:
+        """Publish a message to a topic
+
+        Args:
+            topic: The topic to publish to
+            content: The message content
+            wait_for_ack: If True, wait for server acknowledgment (may cause issues if called from message handler)
+        """
+        msg_id = self._next_id()
+        await self._send({
+            "pub": {
+                "id": msg_id,
+                "topic": topic,
+                "noecho": True,
+                "content": content
+            }
+        })
+        if wait_for_ack:
+            return await self._wait_for_ctrl(msg_id)
+        return {"code": 202, "text": "Accepted (no ack)"}
+
+    async def publish_formatted(
+        self,
+        topic: str,
+        text: str,
+        fmt: Optional[list] = None,
+        ent: Optional[list] = None
+    ) -> dict:
+        """Publish a formatted message (with mentions, links, etc.)"""
+        msg_id = self._next_id()
+        msg = {
+            "pub": {
+                "id": msg_id,
+                "topic": topic,
+                "noecho": True,
+                "content": text
+            }
+        }
+
+        if fmt:
+            msg["pub"]["head"] = {"mime": "text/x-drafty"}
+            msg["pub"]["content"] = {"txt": text, "fmt": fmt, "ent": ent or []}
+
+        await self._send(msg)
+        return await self._wait_for_ctrl(msg_id)
+
+    async def _send(self, msg: dict) -> None:
+        """Send a message to the server"""
+        if self.ws is None:
+            raise RuntimeError("Not connected")
+        data = json.dumps(msg)
+        logger.debug(f">>> {data}")
+        await self.ws.send(data)
+
+    async def _wait_for_ctrl(self, msg_id: str, timeout: float = 10.0) -> dict:
+        """Wait for a ctrl response with matching ID"""
+        future = asyncio.get_event_loop().create_future()
+        self._pending[msg_id] = future
+
+        async def receive_until_resolved():
+            while not future.done():
+                try:
+                    raw = await asyncio.wait_for(self.ws.recv(), timeout=1.0)
+                    await self._handle_message(raw)
+                except asyncio.TimeoutError:
+                    continue
+
+        try:
+            # Start receiving messages until we get our response
+            receive_task = asyncio.create_task(receive_until_resolved())
+            result = await asyncio.wait_for(future, timeout)
+            receive_task.cancel()
+            return result
+        except asyncio.TimeoutError:
+            raise Exception(f"Timeout waiting for response to message {msg_id}")
+        finally:
+            self._pending.pop(msg_id, None)
+
+    async def _handle_message(self, raw: str) -> None:
         """Handle incoming WebSocket message"""
-        # Handle server message wrapping
-        message_type = message.get("type")
-        logger.info(f"📨 Message type: {message_type}")
-        
-        if message_type == "agent_message":
-            # Unwrap agent message - server sends: {"type": "agent_message", "event": "...", "data": {...}}
-            event = message.get("event")
-            data = message.get("data", {})
-        elif message_type == "broadcast":
-            # Broadcast format - server sends: {"type": "broadcast", "event": "...", "data": {...}}
-            event = message.get("event")
-            data = message.get("data", {})
-        else:
-            # Direct event format
-            event = message.get("event") 
-            data = message.get("data", {})
-        
-        logger.info(f"🔍 Handling event: {event}")
-        
-        # Handle new messages (agents get @mentions as regular messages)
-        if event == "new_message":
-            logger.info(f"🚀 Received message: {data.get('content', '')}")
-            
-            try:
-                # Extract message details
-                content = data.get('content', '')
-                username = data.get('username', 'Unknown')
-                chat_id = data.get('chat_id', '')
-                user_id = data.get('user_id', 'unknown')  # Get user_id from broadcast
-                target_agent = data.get('target_agent', None)  # Check if this is a direct widget message
-                
-                # Debug: log agent name check
-                logger.info(f"🔍 Checking if '{content}' is for agent '{self.authenticated_agent_name}'")
-                
-                # Check if this is for this agent
-                is_for_agent = False
-                
-                # Case 1: Direct widget message (has target_agent field)
-                if target_agent and target_agent == self.authenticated_agent_name:
-                    logger.info(f"🎯 Direct widget message for {self.authenticated_agent_name}")
-                    is_for_agent = True
-                    message = content  # Use content as-is
-                
-                # Case 2: Regular @mention
-                elif content.startswith(f"@{self.authenticated_username} "):
-                    # Extract the actual message after @username (people @mention using username, not display name)
-                    message = content[len(f"@{self.authenticated_username} "):].strip()
-                    is_for_agent = True
-                
-                if is_for_agent:
-                    logger.info(f"🧠 Detected message from {username}: '{message}'")
-                    logger.info(f"⏳ Waiting for server to send rich context via agent_invoke_streaming event...")
-                    
-                    # The server will automatically send context via agent_invoke_streaming event
-                    # when it detects an SDK agent invocation. No need to request it.
+        logger.debug(f"<<< {raw}")
+        msg = json.loads(raw)
+
+        # Control message (response to our requests)
+        if "ctrl" in msg:
+            ctrl = msg["ctrl"]
+            msg_id = ctrl.get("id")
+            if msg_id and msg_id in self._pending:
+                future = self._pending[msg_id]
+                if ctrl.get("code", 0) >= 400:
+                    future.set_exception(
+                        Exception(f"Error {ctrl.get('code')}: {ctrl.get('text')}")
+                    )
                 else:
-                    logger.debug(f"Message not for this agent: {content}")
-                
-            except Exception as e:
-                logger.error(f"❌ Error processing message: {e}")
-        
-        # Handle GoGather agent invocation (replaces FastAPI agent_invoke_streaming)
-        elif event == "agent_invocation":
-            logger.info(f"🎯 Received GoGather agent invocation for user: {data.get('context', {}).get('user', {}).get('username')}")
-            
-            try:
-                # Parse the GoGather invocation format
-                
-                invocation_id = data.get('invocation_id')
-                context_data = data.get('context', {})
-                
-                # Build AgentContext from GoGather server data
-                user_data = context_data.get('user', {})
-                user_context = UserContext(
-                    user_id=user_data.get('user_id'),
-                    username=user_data.get('username'),
-                    display_name=user_data.get('display_name')
-                )
-                
-                chat_data = context_data.get('chat', {})
-                # Parse participants
-                participants = []
-                for p_data in chat_data.get('participants', []):
-                    participants.append(UserContext(
-                        user_id=p_data.get('user_id'),
-                        username=p_data.get('username'),
-                        display_name=p_data.get('display_name')
-                    ))
-                
-                chat_context = ChatContext(
-                    chat_id=chat_data.get('chat_id'),
-                    name=chat_data.get('name'),
-                    creator_id=chat_data.get('creator_id'),
-                    created_at=parse_datetime(chat_data.get('created_at')),
-                    participants=participants
-                )
-                
-                # Parse conversation history
-                conversation_history = []
-                for msg_data in context_data.get('conversation_history', []):
-                    conversation_history.append(MessageContext(
-                        id=msg_data.get('id'),
-                        user_id=msg_data.get('user_id'),
-                        username=msg_data.get('username'),
-                        content=msg_data.get('content'),
-                        message_type=msg_data.get('message_type'),
-                        agent_name=msg_data.get('agent_name'),
-                        created_at=parse_datetime(msg_data.get('created_at'))
-                    ))
-                
-                context = AgentContext(
-                    user=user_context,
-                    chat=chat_context,
-                    prompt=context_data.get('prompt'),
-                    conversation_history=conversation_history,
-                    invocation_id=invocation_id,
-                    metadata=context_data.get('metadata', {})
-                )
-                
-                logger.info(f"🧠 Processing GoGather invocation: {len(conversation_history)} messages, {len(participants)} participants")
-                
-                # Process with the agent using the rich context
-                response = await self.agent.process(context)
-                logger.info(f"💬 Agent response: '{response}'")
-                
-                # Send response back using GoGather agent_response format
-                await self.websocket.send_json({
-                    "event": "agent_response",
-                    "data": {
-                        "invocation_id": invocation_id,
-                        "response": response,
-                        "error": ""
-                    }
-                })
-                
-                logger.info(f"✅ Sent GoGather agent response for invocation {invocation_id}")
-                
-            except Exception as e:
-                logger.error(f"❌ Error processing GoGather invocation: {e}")
-                import traceback
-                logger.error(traceback.format_exc())
-                
-                # Send error response using GoGather format
-                await self.websocket.send_json({
-                    "event": "agent_response",
-                    "data": {
-                        "invocation_id": data.get('invocation_id', 'unknown'),
-                        "response": "",
-                        "error": str(e)
-                    }
-                })
-        
-        # Handle legacy FastAPI streaming (for backwards compatibility)
-        elif event == "agent_invoke_streaming":
-            logger.info(f"Received legacy FastAPI streaming invocation")
-            
-            try:
-                # Parse context
-                context = AgentContext(**data)
-                
-                # Validate context
-                self.agent.validate_context(context)
-                
-                # Process with streaming
-                async for chunk in self.agent.process_streaming(context):
-                    await self.websocket.send_json({
-                        "event": "agent_response_chunk",
-                        "data": {
-                            "invocation_id": context.invocation_id,
-                            "chunk": chunk,
-                            "done": False
-                        }
-                    })
-                
-                # Send completion
-                await self.websocket.send_json({
-                    "event": "agent_response_chunk",
-                    "data": {
-                        "invocation_id": context.invocation_id,
-                        "chunk": "",
-                        "done": True,
-                        "success": True
-                    }
-                })
-                
-                logger.info("✅ Completed legacy FastAPI streaming response")
-                
-            except Exception as e:
-                logger.error(f"Error in legacy FastAPI streaming: {e}")
-                
-                # Send error
-                await self.websocket.send_json({
-                    "event": "agent_response_chunk",
-                    "data": {
-                        "invocation_id": data.get("invocation_id"),
-                        "error": str(e),
-                        "done": True,
-                        "success": False
-                    }
-                })
-        
-        # Note: Heartbeat handling removed
-        
-        # Handle errors
-        elif event == "error":
-            logger.error(f"Server error: {data.get('message', 'Unknown error')}")
-        
-        # Handle disconnection request
-        elif event == "disconnect":
-            logger.info(f"Server requested disconnect: {data.get('reason', 'No reason given')}")
-            self.running = False
-        
+                    future.set_result(ctrl)
+
+        # Data message (chat message)
+        elif "data" in msg:
+            data = msg["data"]
+            topic = data.get("topic", "")
+            seq = data.get("seq", 0)
+            from_user = data.get("from", "")
+
+            logger.debug(f"Data message: topic={topic}, from={from_user}, seq={seq}")
+
+            # Don't process our own messages
+            if from_user == self.user_id:
+                logger.debug(f"Ignoring own message in {topic}")
+                return
+
+            # Deduplicate: track by topic + seq number
+            msg_key = f"{topic}:{seq}"
+            if msg_key in self._processed_messages:
+                logger.debug(f"Skipping duplicate message: {msg_key}")
+                return
+            self._processed_messages.add(msg_key)
+
+            # Limit memory - keep only last 1000 message keys
+            if len(self._processed_messages) > 1000:
+                # Remove oldest entries (set doesn't maintain order, so clear half)
+                to_remove = list(self._processed_messages)[:500]
+                for key in to_remove:
+                    self._processed_messages.discard(key)
+
+            message = Message.from_data(topic, data)
+            logger.debug(f"Processing: {message.topic} is_dm={message.is_dm}")
+
+            if self.on_message:
+                try:
+                    self.on_message(message)
+                except Exception as e:
+                    logger.error(f"Error in message handler: {e}")
+
+        # Meta message (topic info, subscriptions)
+        elif "meta" in msg:
+            meta = msg["meta"]
+            # Collect subscriptions from 'me' topic
+            if meta.get("topic") == "me" and "sub" in meta:
+                for sub in meta["sub"]:
+                    topic = sub.get("topic")
+                    if topic and hasattr(self, '_pending_subs'):
+                        self._pending_subs.append(topic)
+                        logger.debug(f"Found subscription: {topic}")
+
+            # Collect fnd search results
+            if meta.get("topic") == "fnd" and "sub" in meta:
+                if not hasattr(self, '_fnd_results'):
+                    self._fnd_results = []
+                for sub in meta["sub"]:
+                    topic = sub.get("topic")
+                    if topic:
+                        self._fnd_results.append(topic)
+                        logger.debug(f"Found channel: {topic}")
+
+        # Presence message
+        elif "pres" in msg:
+            pres = msg["pres"]
+            await self._handle_presence(pres)
+
+    async def _handle_presence(self, pres: dict) -> None:
+        """Handle presence notifications"""
+        topic = pres.get("topic", "")
+        what = pres.get("what", "")
+        src = pres.get("src", "")  # The topic or user this is about
+
+        logger.debug(f"Presence: topic={topic}, what={what}, src={src}")
+
+        # Handle DM notifications on 'me' topic
+        # When someone sends a DM, we get: topic='me', what='msg', src=<user_id>
+        # We need to subscribe to the user ID - Tinode will resolve it to the P2P topic
+        if topic == "me" and what == "msg" and src:
+            # src is a user ID (e.g., "usr-L1uZzRJrx4"), not a p2p topic
+            # Subscribing to a user ID will get us the P2P topic
+            if src.startswith("usr") and src != self.user_id:
+                if not hasattr(self, '_pending_dm_subscriptions'):
+                    self._pending_dm_subscriptions = set()
+                if src not in self._pending_dm_subscriptions:
+                    self._pending_dm_subscriptions.add(src)
+                    logger.info(f"Queued DM subscription to user: {src}")
+
+        # Also handle P2P topics directly if we somehow get them
+        if topic == "me":
+            if src and src.startswith("p2p") and src not in self.subscriptions:
+                if not hasattr(self, '_pending_dm_subscriptions'):
+                    self._pending_dm_subscriptions = set()
+                self._pending_dm_subscriptions.add(src)
+                logger.info(f"Queued DM for subscription: {src}")
+
+    async def subscribe_nonblocking(self, topic: str) -> None:
+        """
+        Subscribe to a topic without waiting for response.
+        Used during message handling to avoid WebSocket concurrency issues.
+        The ctrl response will be processed by the main message loop.
+        """
+        if topic in self.subscriptions:
+            return
+
+        msg_id = self._next_id()
+
+        # For P2P topics, request recent messages
+        if topic.startswith("p2p"):
+            get_params = {
+                "what": "desc sub data",
+                "data": {"limit": 10}
+            }
         else:
-            logger.debug(f"Received event: {event}")
-    
-    async def run(self) -> None:
+            get_params = {"what": "desc sub data"}
+
+        await self._send({
+            "sub": {
+                "id": msg_id,
+                "topic": topic,
+                "get": get_params
+            }
+        })
+
+        # Mark as subscribed immediately (optimistic)
+        self.subscriptions.add(topic)
+        logger.debug(f"Sent non-blocking subscription for {topic}")
+
+    async def process_pending_dm_subscriptions(self) -> None:
+        """Process any pending DM subscriptions using non-blocking subscribe
+
+        Handles both:
+        - User IDs (e.g., "usr-L1uZzRJrx4") - Tinode resolves to P2P topic
+        - P2P topics directly (e.g., "p2pABC123")
         """
-        Run the agent client with automatic reconnection.
-        This is the main entry point - call this to start your agent.
-        """
-        self.running = True
-        reconnect_attempts = 0
-        max_reconnect_delay = 60
-        
-        print(f"🤖 Starting message router...")
-        print(f"📡 Waiting for invocations...")
-        logger.info(f"🤖 Starting message router...")
-        logger.info(f"📡 Waiting for invocations...")
-        
-        while self.running:
+        if not hasattr(self, '_pending_dm_subscriptions') or not self._pending_dm_subscriptions:
+            return
+
+        to_subscribe = list(self._pending_dm_subscriptions)
+        self._pending_dm_subscriptions.clear()
+
+        for target in to_subscribe:
+            # Skip if we're already subscribed (for user IDs, check both the ID and potential P2P topics)
+            if target in self.subscriptions:
+                continue
+
             try:
-                # Connect to WebSocket
-                await self.connect()
-                
-                # Reset reconnection attempts on successful connection
-                reconnect_attempts = 0
-                
-                # Message handling loop
-                async for msg in self.websocket:
-                    if msg.type == aiohttp.WSMsgType.TEXT:
-                        try:
-                            data = json.loads(msg.data)
-                            print(f"📥 Received raw message: {data}")
-                            logger.info(f"📥 Received raw message: {data}")
-                            await self._handle_message(data)
-                        except json.JSONDecodeError:
-                            print(f"Invalid JSON received: {msg.data}")
-                            logger.error(f"Invalid JSON received: {msg.data}")
-                    elif msg.type == aiohttp.WSMsgType.ERROR:
-                        logger.error(f"WebSocket error: {self.websocket.exception()}")
-                        break
-                    elif msg.type == aiohttp.WSMsgType.CLOSED:
-                        logger.info("WebSocket connection closed")
-                        break
-                
+                logger.info(f"Auto-subscribing to DM: {target}")
+                await self.subscribe_nonblocking(target)
             except Exception as e:
-                logger.error(f"Connection error: {e}")
-            
-            finally:
-                # Cleanup current connection
-                if self.websocket and not self.websocket.closed:
-                    await self.websocket.close()
-                
-                # Note: No heartbeat to stop
-                
-                # Reconnect if still running
-                if self.running:
-                    # Exponential backoff with max delay
-                    delay = min(self._reconnect_delay * (2 ** reconnect_attempts), max_reconnect_delay)
-                    reconnect_attempts += 1
-                    
-                    logger.info(f"Reconnecting in {delay} seconds (attempt {reconnect_attempts})...")
-                    await asyncio.sleep(delay)
-    
-    async def __aenter__(self):
-        """Async context manager entry"""
-        return self
-    
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit"""
-        await self.disconnect()
+                logger.warning(f"Failed to send subscription for DM {target}: {e}")
 
+    async def run(self) -> None:
+        """Main message loop - run until disconnected"""
+        if self.ws is None:
+            raise RuntimeError("Not connected")
 
-def run_agent(agent: BaseAgent, **kwargs):
-    """
-    Convenience function to run an agent.
-    
-    Args:
-        agent: Your BaseAgent implementation
-        **kwargs: Additional arguments for AgentClient
-    
-    Example:
-        from gathersdk import BaseAgent, AgentContext, run_agent
-        
-        class MyAgent(BaseAgent):
-            async def process(self, context: AgentContext) -> str:
-                return f"Hello {context.user.username}!"
-        
-        if __name__ == "__main__":
-            agent = MyAgent("my-agent", "A friendly greeting agent")
-            run_agent(agent)
-    """
-    async def main():
-        async with AgentClient(agent, **kwargs) as client:
-            await client.run()
-    
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("Agent stopped by user")
-    except Exception as e:
-        logger.error(f"Agent error: {e}")
-        raise
+        try:
+            async for raw in self.ws:
+                await self._handle_message(raw)
+                # Process any pending DM subscriptions after each message
+                await self.process_pending_dm_subscriptions()
+        except websockets.ConnectionClosed:
+            logger.info("Connection closed")
+            if self.on_disconnected:
+                self.on_disconnected()
+
+    async def disconnect(self) -> None:
+        """Disconnect from server"""
+        if self.ws:
+            await self.ws.close()
+            self.ws = None
